@@ -7,6 +7,7 @@ import {
   editDraft,
   generateFileNumber,
   exportDocx,
+  sendOfficialEmail,
 } from '../../lib/api';
 import { formatDate, getStatusLabel, getPriorityLabel, downloadBlob } from '../../lib/utils';
 import ConfidenceBadge from '../shared/ConfidenceBadge';
@@ -23,6 +24,8 @@ import {
   Tag,
   FileCheck,
   Search,
+  Mail,
+  Send,
 } from 'lucide-react';
 
 const TABS = ['tab_ocr', 'tab_entities', 'tab_classification', 'tab_draft', 'tab_grounding'];
@@ -38,6 +41,14 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
   const [draftText, setDraftText] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [fileNumber, setFileNumber] = useState(null);
+
+  // Email Modal State
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailTo, setEmailTo] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [emailSuccess, setEmailSuccess] = useState(null);
+
 
   useEffect(() => {
     loadDetail();
@@ -175,6 +186,19 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
             <Download size={14} />
           </button>
           <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              setEmailTo(detail?.entities?.find((e) => e.entity_type === 'email')?.entity_value || '');
+              setEmailSubject(`மனு ஒப்புகை விவரம் - ${fileNumber || detail.file_name}`);
+              setEmailBody(draftText || `வணக்கம். தங்களின் மனு பெறப்பட்டு கோப்பு எண் ${fileNumber || 'ஒதுக்கீடு செய்யப்படுகிறது'}.`);
+              setShowEmailModal(true);
+            }}
+            title="மனுதாரருக்கு மின்னஞ்சல் அனுப்பு"
+          >
+            <Mail size={14} />
+            <span className="tamil-text">மின்னஞ்சல் அனுப்பு</span>
+          </button>
+          <button
             className="btn btn-success btn-sm"
             onClick={() => handleApprove('approve')}
             disabled={actionLoading || draft?.officer_approved}
@@ -192,6 +216,111 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
           </button>
         </div>
       </div>
+
+      {/* Email Modal Dialog */}
+      {showEmailModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          padding: 20,
+        }}>
+          <div className="card animate-fade-in" style={{ maxWidth: 580, width: '100%', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Mail size={18} style={{ color: 'var(--color-tn-accent)' }} />
+                <h3 className="tamil-text" style={{ fontSize: '1rem', fontWeight: 700 }}>
+                  மனுதாரருக்கு ஒப்புகை மின்னஞ்சல் அனுப்புதல்
+                </h3>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowEmailModal(false)}>✕</button>
+            </div>
+
+            {emailSuccess && (
+              <div style={{ padding: 10, background: '#dcfce7', color: '#166534', borderRadius: 6, fontSize: '0.8rem' }}>
+                {emailSuccess}
+              </div>
+            )}
+
+            <div>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>
+                பெறுநர் மின்னஞ்சல் (Petitioner Email) *
+              </label>
+              <input
+                type="email"
+                required
+                placeholder="citizen@gmail.com"
+                value={emailTo}
+                onChange={(e) => setEmailTo(e.target.value)}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-surface-border)', background: 'var(--color-surface-input)', color: 'var(--color-text-primary)' }}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }} className="tamil-text">
+                தலைப்பு (Subject) *
+              </label>
+              <input
+                type="text"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                className="tamil-text"
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-surface-border)', background: 'var(--color-surface-input)', color: 'var(--color-text-primary)' }}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }} className="tamil-text">
+                கடித உரை (Tamil Message Body) *
+              </label>
+              <textarea
+                rows={6}
+                value={emailBody}
+                onChange={(e) => setEmailBody(e.target.value)}
+                className="tamil-text"
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-surface-border)', background: 'var(--color-surface-input)', color: 'var(--color-text-primary)', lineHeight: 1.6 }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button className="btn btn-ghost" onClick={() => setShowEmailModal(false)}>ரத்து</button>
+              <button
+                className="btn btn-primary"
+                disabled={actionLoading || !emailTo.trim()}
+                onClick={async () => {
+                  setActionLoading(true);
+                  try {
+                    const res = await sendOfficialEmail({
+                      recipient_email: emailTo.trim(),
+                      subject: emailSubject.trim(),
+                      body: emailBody.trim(),
+                      officer_id: officerId,
+                      source_id: sourceId,
+                    });
+                    setEmailSuccess(res.message || "மின்னஞ்சல் வெற்றிகரமாக அனுப்பப்பட்டது!");
+                    setTimeout(() => setShowEmailModal(false), 1500);
+                  } catch (err) {
+                    setError(err.message);
+                  } finally {
+                    setActionLoading(false);
+                  }
+                }}
+              >
+                <Send size={14} />
+                <span className="tamil-text">{actionLoading ? 'அனுப்புகிறது...' : 'அனுப்பு'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Tabs */}
       <div className="tabs">

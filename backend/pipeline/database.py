@@ -191,10 +191,23 @@ def init_db(db_path: Optional[Path] = None) -> None:
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS sent_emails (
+            email_id TEXT PRIMARY KEY,
+            source_id TEXT REFERENCES sources(source_id),
+            recipient_email TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            body TEXT NOT NULL,
+            attachment_path TEXT,
+            officer_id TEXT NOT NULL,
+            status TEXT CHECK(status IN ('sent', 'failed', 'queued')) DEFAULT 'sent',
+            error_message TEXT,
+            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
 
         INSERT OR IGNORE INTO imap_cursor (id, last_uid, updated_at)
         VALUES (1, 0, CURRENT_TIMESTAMP);
         """)
+
 
         # Safe Column Migrations for existing databases
         cur = conn.cursor()
@@ -246,6 +259,19 @@ def record_source(
             return cursor.rowcount > 0
     finally:
         conn.close()
+
+
+def get_source(source_id: str, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """Fetch source document record by source_id."""
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM sources WHERE source_id = ?", (source_id,))
+        r = cursor.fetchone()
+        return dict(r) if r else None
+    finally:
+        conn.close()
+
 
 
 def update_source_status(source_id: str, status: str, db_path: Optional[Path] = None) -> None:
@@ -957,4 +983,55 @@ def get_chart_record(chart_id: str, db_path: Optional[Path] = None) -> Optional[
         return dict(r) if r else None
     finally:
         conn.close()
+
+
+def save_sent_email(
+    email_id: str,
+    recipient_email: str,
+    subject: str,
+    body: str,
+    officer_id: str,
+    source_id: Optional[str] = None,
+    attachment_path: Optional[str] = None,
+    status: str = "sent",
+    error_message: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> None:
+    """Record outbound sent email into database for audit and compliance."""
+    conn = get_db_connection(db_path)
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO sent_emails (
+                    email_id, source_id, recipient_email, subject, body,
+                    attachment_path, officer_id, status, error_message
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    email_id,
+                    source_id,
+                    recipient_email,
+                    subject,
+                    body,
+                    attachment_path,
+                    officer_id,
+                    status,
+                    error_message,
+                ),
+            )
+    finally:
+        conn.close()
+
+
+def list_sent_emails(limit: int = 50, db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """List sent email history sorted by sent_at DESC."""
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM sent_emails ORDER BY sent_at DESC LIMIT ?", (limit,))
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
 

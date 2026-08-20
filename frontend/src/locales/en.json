@@ -7,8 +7,10 @@
     "data": "Data & Visualization",
     "content": "Official Content",
     "bulk": "Bulk Workflow",
+    "mail": "Mail Hub",
     "settings": "Settings",
     "audit": "Audit Log",
+
     "logout": "Logout"
   },
   "topbar": {

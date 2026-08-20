@@ -14,6 +14,7 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  Mail,
 } from 'lucide-react';
 
 const NAV_MODULES = [
@@ -22,7 +23,9 @@ const NAV_MODULES = [
   { id: 'data', icon: BarChart3 },
   { id: 'content', icon: Stamp },
   { id: 'bulk', icon: Inbox },
+  { id: 'mail', icon: Mail },
 ];
+
 
 const NAV_BOTTOM = [
   { id: 'audit', icon: ClipboardList },

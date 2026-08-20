@@ -132,3 +132,15 @@ class WorkflowPipeline:
             "classification": classification,
             "draft": draft,
         }
+
+
+_global_pipeline: Optional[WorkflowPipeline] = None
+
+
+def get_pipeline() -> WorkflowPipeline:
+    """Singleton getter for WorkflowPipeline."""
+    global _global_pipeline
+    if _global_pipeline is None:
+        _global_pipeline = WorkflowPipeline()
+    return _global_pipeline
+

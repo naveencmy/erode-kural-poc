@@ -158,10 +158,45 @@ export const deleteDatasetApi = (datasetId, officerId = 'OFFICER') =>
     method: 'DELETE',
   });
 
+// ─── Mail & Official Communication ──────────────────
+export const testMailConnection = (credentials = {}) =>
+  apiCall('/v2/mail/test-connection', {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+  });
+
+export const fetchReceivedEmails = (limit = 20) =>
+  apiCall(`/v2/mail/received?limit=${limit}`);
+
+export const ingestEmailToWorkflow = (uid, officerId = 'OFFICER') =>
+  apiCall('/v2/mail/ingest', {
+    method: 'POST',
+    body: JSON.stringify({ uid, officer_id: officerId }),
+  });
+
+export const sendOfficialEmail = (mailData) =>
+  apiCall('/v2/mail/send', {
+    method: 'POST',
+    body: JSON.stringify(mailData),
+  });
+
+export const fetchSentEmailLogs = (limit = 50) =>
+  apiCall(`/v2/mail/sent-logs?limit=${limit}`);
+
+export const fetchMailConfig = () =>
+  apiCall('/v2/mail/config');
+
+export const saveMailConfig = (configData) =>
+  apiCall('/v2/mail/config', {
+    method: 'POST',
+    body: JSON.stringify(configData),
+  });
+
 // ─── Content (stub) ──────────────────────────────────
 export const generateContent = (templateType, fields, officerId) =>
   apiCall('/content/generate', {
     method: 'POST',
     body: JSON.stringify({ template_type: templateType, fields, officer_id: officerId }),
   });
+
 
