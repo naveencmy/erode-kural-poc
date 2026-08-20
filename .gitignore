@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Databases & Runtime Output / Scans
+backend/collectorate_workflow.db
+backend/collectorate_workflow.db-journal
+*.sqlite3
+*.db
+backend/outputs/charts/*.png
+!backend/outputs/charts/.gitkeep
+backend/outputs/acknowledgements/*.docx
+!backend/outputs/acknowledgements/.gitkeep
+backend/data/scans/*
+!backend/data/scans/.gitkeep
+backend/data/processed/*
+!backend/data/processed/.gitkeep
+
+# IDE & OS Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
