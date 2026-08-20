@@ -82,13 +82,26 @@ def test_ingest_email_to_bulk_workflow():
 
 
 
-def test_send_official_email_simulation():
+def test_send_official_email_simulation(monkeypatch):
     """Verify outbound official email transmission and DB logging."""
+    class MockSMTP:
+        def __init__(self, *args, **kwargs): pass
+        def starttls(self, *args, **kwargs): pass
+        def login(self, *args, **kwargs): pass
+        def send_message(self, *args, **kwargs): pass
+        def quit(self): pass
+
+    import smtplib
+    monkeypatch.setattr(smtplib, "SMTP", MockSMTP)
+    monkeypatch.setattr(smtplib, "SMTP_SSL", MockSMTP)
+
     res = send_official_email(
         to_email="citizen.test@erode.tn.gov.in",
         subject="மனு எண் 1005/REV/2026 ஒப்புகை கடிதம்",
         body="வணக்கம். தங்களின் மனு பெறப்பட்டு கோப்பு எண் 1005/REV/2026 ஒதுக்கப்பட்டுள்ளது.",
         officer_id="DRO_ERODE_01",
+        smtp_user="test@erode.tn.gov.in",
+        smtp_pwd="test_password",
     )
     assert res["status"] == "success"
     assert res["recipient"] == "citizen.test@erode.tn.gov.in"
@@ -100,8 +113,23 @@ def test_send_official_email_simulation():
     assert "1005/REV/2026" in sent_logs[0]["subject"]
 
 
-def test_api_mail_endpoints():
+def test_api_mail_endpoints(monkeypatch):
     """Verify full FastAPI /api/v2/mail/* endpoints."""
+    class MockSMTP:
+        def __init__(self, *args, **kwargs): pass
+        def starttls(self, *args, **kwargs): pass
+        def login(self, *args, **kwargs): pass
+        def send_message(self, *args, **kwargs): pass
+        def quit(self): pass
+
+    import smtplib
+    monkeypatch.setattr(smtplib, "SMTP", MockSMTP)
+    monkeypatch.setattr(smtplib, "SMTP_SSL", MockSMTP)
+
+    # Set mock credentials in config
+    monkeypatch.setattr(config, "SMTP_USERNAME", "officer@erode.tn.gov.in")
+    monkeypatch.setattr(config, "SMTP_PASSWORD", "mock_pass")
+
     client = TestClient(app)
 
     # 1. GET /api/v2/mail/config
@@ -136,3 +164,4 @@ def test_api_mail_endpoints():
     logs_resp = client.get("/api/v2/mail/sent-logs")
     assert logs_resp.status_code == 200
     assert len(logs_resp.json()["sent_emails"]) >= 1
+

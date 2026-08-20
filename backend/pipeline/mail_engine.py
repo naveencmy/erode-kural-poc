@@ -443,10 +443,20 @@ def send_official_email(
 
     srv = smtp_server or config.SMTP_SERVER
     port = smtp_port or config.SMTP_PORT
-    usr = smtp_user or config.SMTP_USERNAME
-    pwd = smtp_pwd or get_stored_imap_password(usr) or config.SMTP_PASSWORD
-    sender_addr = from_email or config.SMTP_FROM_EMAIL
+    usr = smtp_user or config.SMTP_USERNAME or config.IMAP_USERNAME
+    pwd = smtp_pwd or get_stored_imap_password(usr) or config.SMTP_PASSWORD or config.IMAP_PASSWORD
+    
+    # Use authenticated user email for From address to pass SPF/DKIM validation
+    sender_addr = from_email
+    if not sender_addr or ("@" not in sender_addr) or ("erode.tn.gov.in" in sender_addr and usr and "@" in usr and "tn.gov.in" not in usr):
+        sender_addr = usr if (usr and "@" in usr) else config.SMTP_FROM_EMAIL
+
     sender_name = from_name or config.SMTP_FROM_NAME
+
+    if not usr or not pwd:
+        raise ValueError(
+            "மின்னஞ்சல் பயனர் பெயர் அல்லது App Password சேமிக்கப்படவில்லை. 'மின்னஞ்சல் மையம் ➔ சர்வர் இணைப்பு' பக்கத்தில் அமைப்புகளை சேமிக்கவும் (Missing SMTP credentials)."
+        )
 
     email_id = f"eml_{uuid.uuid4().hex[:10]}"
 
@@ -456,7 +466,7 @@ def send_official_email(
     msg["To"] = to_email
     msg["Subject"] = subject
     msg["Date"] = email.utils.formatdate(localtime=True)
-    msg["Message-ID"] = email.utils.make_msgid(domain="erode.tn.gov.in")
+    msg["Message-ID"] = email.utils.make_msgid(domain="gmail.com" if "gmail" in srv else "tn.gov.in")
 
     # Add Tamil body text (Plain & HTML)
     msg.attach(MIMEText(body, "plain", "utf-8"))
@@ -470,32 +480,6 @@ def send_official_email(
                 part["Content-Disposition"] = f'attachment; filename="{att_file.name}"'
                 msg.attach(part)
 
-    # If in DEV mode and no live SMTP credentials, simulate successful delivery
-    if config.DEV_MODE and (not usr or not pwd):
-        save_sent_email(
-            email_id=email_id,
-            recipient_email=to_email,
-            subject=subject,
-            body=body,
-            officer_id=officer_id,
-            source_id=source_id,
-            attachment_path=attachment_path,
-            status="sent",
-        )
-        log_audit(
-            source_id=source_id,
-            action="EMAIL_SENT_SIMULATED",
-            officer_id=officer_id,
-            details=f"Email sent (Dev Mode) to {to_email}: {subject}",
-        )
-        return {
-            "status": "success",
-            "email_id": email_id,
-            "mode": "simulation",
-            "recipient": to_email,
-            "message": f"மின்னஞ்சல் வெற்றிகரமாக அனுப்பப்பட்டது (Dev Mode): {to_email}",
-        }
-
     # Live SMTP Transmission
     smtp_client = None
     try:
@@ -508,9 +492,7 @@ def send_official_email(
                 ctx = ssl.create_default_context()
                 smtp_client.starttls(context=ctx)
 
-        if usr and pwd:
-            smtp_client.login(usr, pwd)
-
+        smtp_client.login(usr, pwd)
         smtp_client.send_message(msg)
 
         save_sent_email(
@@ -527,16 +509,18 @@ def send_official_email(
             source_id=source_id,
             action="EMAIL_SENT_LIVE",
             officer_id=officer_id,
-            details=f"Live email sent via {srv} to {to_email}: {subject}",
+            details=f"Live email sent via {srv} from {sender_addr} to {to_email}: {subject}",
         )
 
         return {
             "status": "success",
             "email_id": email_id,
             "mode": "live_smtp",
+            "sender": sender_addr,
             "recipient": to_email,
-            "message": f"அரசு மின்னஞ்சல் வெற்றிகரமாக அனுப்பப்பட்டது: {to_email}",
+            "message": f"மின்னஞ்சல் ({sender_addr} வழியாக) வெற்றிகரமாக அனுப்பப்பட்டது: {to_email}",
         }
+
 
     except Exception as e:
         save_sent_email(
