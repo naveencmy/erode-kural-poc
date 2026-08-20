@@ -1,0 +1,12 @@
+services:
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: erode_mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025" # Web UI (http://localhost:8025)
+      - "1025:1025" # SMTP Port (127.0.0.1:1025)
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1

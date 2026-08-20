@@ -50,14 +50,41 @@ def test_mail_servers_check():
 
 def test_mail_diagnostics_missing_credentials():
     """Verify diagnostic connection test handles unconfigured credentials safely."""
-    results = test_mail_servers(imap_user="", imap_pwd="", smtp_user="", smtp_pwd="")
+    results = test_mail_servers(imap_user="", imap_pwd="", smtp_user="", smtp_pwd="", smtp_server="smtp.nic.in")
     assert results["imap"]["status"] == "failed"
     assert results["smtp"]["status"] == "failed"
+
+
+def test_mailpit_smtp_unauthenticated_connection(monkeypatch):
+    """Verify local Mailpit SMTP connects and sends without requiring password/TLS."""
+    class MockLocalSMTP:
+        def __init__(self, host, port, timeout=15):
+            assert host in ("127.0.0.1", "localhost")
+            assert port == 1025
+        def send_message(self, msg):
+            assert "1008/REV/2026" in msg["Subject"]
+        def quit(self): pass
+
+    import smtplib
+    monkeypatch.setattr(smtplib, "SMTP", MockLocalSMTP)
+
+    res = send_official_email(
+        to_email="citizen@example.com",
+        subject="மனு எண் 1008/REV/2026 ஒப்புகை",
+        body="Mailpit sandbox test body",
+        smtp_server="127.0.0.1",
+        smtp_port=1025,
+        smtp_tls=False,
+        smtp_ssl=False,
+    )
+    assert res["status"] == "success"
+    assert res["mode"] == "live_smtp"
 
 
 def test_fetch_received_emails_dev_mailbox():
     """Verify inbox poller retrieves seeded Tamil grievance emails."""
     res = fetch_recent_inbox_emails()
+
     assert res["status"] == "success"
     assert res["count"] >= 2
     emails = res["emails"]

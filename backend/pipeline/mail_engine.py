@@ -108,7 +108,8 @@ def test_mail_servers(
                     pass
 
     # 2. Test SMTP
-    if not usr_smtp or not pwd_smtp:
+    is_local_smtp = srv_smtp in ("localhost", "127.0.0.1") or port_smtp in (1025, 2525)
+    if not is_local_smtp and (not usr_smtp or not pwd_smtp):
         results["smtp"] = {
             "status": "failed",
             "server": srv_smtp,
@@ -123,16 +124,18 @@ def test_mail_servers(
                 smtp_client = smtplib.SMTP_SSL(srv_smtp, port_smtp, context=context, timeout=8)
             else:
                 smtp_client = smtplib.SMTP(srv_smtp, port_smtp, timeout=8)
-                if smtp_tls:
+                if smtp_tls and not is_local_smtp:
                     context = ssl.create_default_context()
                     smtp_client.starttls(context=context)
 
-            smtp_client.login(usr_smtp, pwd_smtp)
+            if usr_smtp and pwd_smtp:
+                smtp_client.login(usr_smtp, pwd_smtp)
+
             results["smtp"] = {
                 "status": "success",
                 "server": srv_smtp,
                 "port": port_smtp,
-                "message": f"SMTP அனுப்பும் சர்வர் வெற்றிகரமாக இணைக்கப்பட்டது ({srv_smtp}:{port_smtp})",
+                "message": f"SMTP அனுப்பும் சர்வர் வெற்றிகரமாக இணைக்கப்பட்டது ({srv_smtp}:{port_smtp}) [Mailpit/Local Ready]",
             }
         except Exception as e:
             results["smtp"] = {
@@ -142,6 +145,7 @@ def test_mail_servers(
                 "message": f"SMTP இணைப்பு தோல்வி: {str(e)}",
             }
         finally:
+
             if smtp_client:
                 try:
                     smtp_client.quit()
@@ -453,7 +457,8 @@ def send_official_email(
 
     sender_name = from_name or config.SMTP_FROM_NAME
 
-    if not usr or not pwd:
+    is_local_smtp = srv in ("localhost", "127.0.0.1") or port in (1025, 2525)
+    if not is_local_smtp and (not usr or not pwd):
         raise ValueError(
             "மின்னஞ்சல் பயனர் பெயர் அல்லது App Password சேமிக்கப்படவில்லை. 'மின்னஞ்சல் மையம் ➔ சர்வர் இணைப்பு' பக்கத்தில் அமைப்புகளை சேமிக்கவும் (Missing SMTP credentials)."
         )
@@ -488,12 +493,15 @@ def send_official_email(
             smtp_client = smtplib.SMTP_SSL(srv, port, context=ctx, timeout=15)
         else:
             smtp_client = smtplib.SMTP(srv, port, timeout=15)
-            if smtp_tls:
+            if smtp_tls and not is_local_smtp:
                 ctx = ssl.create_default_context()
                 smtp_client.starttls(context=ctx)
 
-        smtp_client.login(usr, pwd)
+        if usr and pwd:
+            smtp_client.login(usr, pwd)
+
         smtp_client.send_message(msg)
+
 
         save_sent_email(
             email_id=email_id,

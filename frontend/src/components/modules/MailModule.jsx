@@ -61,7 +61,18 @@ const PRESETS = {
     smtp_ssl: false,
     from_email: "collectorate@erode.tn.gov.in",
   },
+  mailpit: {
+    name: "📬 Mailpit Local Sandbox (127.0.0.1:1025)",
+    imap_server: "127.0.0.1",
+    imap_port: 993,
+    smtp_server: "127.0.0.1",
+    smtp_port: 1025,
+    smtp_tls: false,
+    smtp_ssl: false,
+    from_email: "collectorate@erode.tn.gov.in",
+  },
 };
+
 
 export default function MailModule() {
   const { t } = useTranslation();
@@ -531,7 +542,7 @@ export default function MailModule() {
             <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 8 }}>
               விரைவு சேவையக முன்னமைப்புகள் (Quick Mail Presets):
             </label>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               {Object.entries(PRESETS).map(([k, p]) => (
                 <button
                   key={k}
@@ -542,8 +553,27 @@ export default function MailModule() {
                   <span>{p.name}</span>
                 </button>
               ))}
+              <a
+                href="http://localhost:8025"
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-sm"
+                style={{
+                  background: 'var(--color-tn-accent)',
+                  color: 'var(--color-tn-primary-dark)',
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontWeight: 600,
+                }}
+              >
+                <ExternalLink size={13} />
+                <span>Mailpit Web UI (Port 8025) ↗</span>
+              </a>
             </div>
           </div>
+
 
           {/* Connection Test Diagnostics Banner */}
           {testResults && (
