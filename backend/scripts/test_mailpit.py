@@ -9,6 +9,10 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
+# Fix Windows console UTF-8 output
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # Add backend directory to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -22,13 +26,12 @@ def check_mailpit_web_ui(base_url="http://localhost:8025"):
         with urllib.request.urlopen(req, timeout=3) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode("utf-8"))
-                print(f"✅ Mailpit Web API is live at {base_url} (Current message count: {data.get('total', 0)})")
+                print(f"[OK] Mailpit Web API is live at {base_url} (Current message count: {data.get('total', 0)})")
                 return True
     except Exception as e:
-        print(f"⚠️  Mailpit Web API at {base_url} is not responding ({e}).")
-        print("   If you haven't started Mailpit yet, run:")
-        print("   docker run -d --name mailpit -p 8025:8025 -p 1025:1025 axllent/mailpit")
+        print(f"[WARN] Mailpit Web API at {base_url} is not responding ({e}).")
         return False
+
 
 
 def test_mailpit_smtp():

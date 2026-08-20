@@ -154,7 +154,7 @@ def run_api(port: int = 8000):
     """Launch FastAPI REST API server for React frontend."""
     import uvicorn
     logger.info(f"Starting FastAPI API Server on port {port}...")
-    uvicorn.run("api_server:app", host="0.0.0.0", port=port, reload=True)
+    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=True)
 
 
 def run_ui():

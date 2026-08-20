@@ -1,4 +1,11 @@
-"""Pipeline Package for Erode Collectorate Bulk Workflow Module V0.2."""
+"""Pipeline Package for Erode Collectorate Bulk Workflow Module V0.2.
+
+Core grievance processing pipeline:
+  Ingestion → OCR → Entity Extraction → Classification → Draft Generation
+
+Note: Mail functionality has been moved to `modules.mail.engine`.
+      Legacy imports via `pipeline.mail_engine` are still supported via shim.
+"""
 
 from .classification import DepartmentClassifier
 from .database import (
@@ -34,6 +41,7 @@ from .orchestrator import WorkflowPipeline
 from .verhoeff import generate_verhoeff, validate_verhoeff
 
 __all__ = [
+    # Database layer
     "init_db",
     "get_db_connection",
     "record_source",
@@ -49,6 +57,7 @@ __all__ = [
     "get_imap_cursor",
     "update_imap_cursor",
     "get_source_details",
+    # Ingestion
     "IMAPPoller",
     "FileSystemWatcher",
     "process_file_path",
@@ -56,14 +65,20 @@ __all__ = [
     "compute_sha256",
     "compute_file_sha256",
     "test_imap_connection",
+    # OCR
     "IndicOCREngine",
+    # Entity extraction
     "TamilEntityExtractor",
-    "DepartmentClassifier",
-    "TamilDraftGenerator",
-    "export_draft_to_docx",
-    "WorkflowPipeline",
-    "validate_verhoeff",
-    "generate_verhoeff",
     "normalize_tamil_date",
     "compute_entity_confidence",
+    # Classification
+    "DepartmentClassifier",
+    # Draft generation
+    "TamilDraftGenerator",
+    "export_draft_to_docx",
+    # Orchestrator
+    "WorkflowPipeline",
+    # Utilities
+    "validate_verhoeff",
+    "generate_verhoeff",
 ]

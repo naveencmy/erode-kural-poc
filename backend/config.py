@@ -59,23 +59,23 @@ ERODE_TALUKS = [
     "தாளவாடி",
 ]
 
-# IMAP Configuration (NIC Govt Mail / Gmail / Custom)
-IMAP_SERVER = os.getenv("IMAP_SERVER", "imap.nic.in")
+# IMAP Configuration (Gmail / NIC Govt Mail / Custom)
+IMAP_SERVER = os.getenv("IMAP_SERVER", "imap.gmail.com")
 IMAP_PORT = int(os.getenv("IMAP_PORT", "993"))
-IMAP_USERNAME = os.getenv("IMAP_USERNAME", "")
+IMAP_USERNAME = os.getenv("IMAP_USERNAME", "naveenatdevine@gmail.com")
 IMAP_PASSWORD = os.getenv("IMAP_PASSWORD", "")
 IMAP_MAILBOX = os.getenv("IMAP_MAILBOX", "INBOX")
 IMAP_BATCH_SIZE = int(os.getenv("IMAP_BATCH_SIZE", "50"))
 IMAP_POLL_INTERVAL_SEC = int(os.getenv("IMAP_POLL_INTERVAL_SEC", "30"))
 
 # SMTP Configuration (Outbound Acknowledgements / Official Mail)
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.nic.in")
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
+SMTP_USERNAME = os.getenv("SMTP_USERNAME", "naveenatdevine@gmail.com")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")
 SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "false").lower() in ("true", "1", "yes")
-SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "collectorate.erode@tn.gov.in")
+SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "naveenatdevine@gmail.com")
 SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "ஈரோடு மாவட்ட ஆட்சியரகம் (Erode Collectorate)")
 
 # OCR Engine Configuration
