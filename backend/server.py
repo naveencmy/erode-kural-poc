@@ -82,6 +82,7 @@ from routers.mail import router as mail_router
 from routers.audit import router as audit_router
 from routers.content import router as content_router
 from modules.data_viz.router import router as data_viz_router
+from modules.document_summary.router import router as document_summary_router
 
 app.include_router(system_router)
 app.include_router(bulk_router)
@@ -89,6 +90,7 @@ app.include_router(mail_router)
 app.include_router(audit_router)
 app.include_router(content_router)
 app.include_router(data_viz_router)
+app.include_router(document_summary_router)
 
 # Also expose v1 alias (/api/data/*) for frontend compatibility
 app.include_router(data_viz_router, prefix="")

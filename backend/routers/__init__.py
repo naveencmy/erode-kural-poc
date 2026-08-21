@@ -5,5 +5,5 @@ Each router handles a specific functional domain:
   - bulk:    Grievance workflow (ingest, list, approve, draft, export)
   - mail:    Email hub (connection test, inbox, send, sent-logs, config)
   - audit:   Immutable audit trail
-  - content: Chat assistant, document summarization, content generation stubs
+  - content: Chat assistant, content generation stubs
 """

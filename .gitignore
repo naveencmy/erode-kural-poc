@@ -25,7 +25,13 @@ MANIFEST
 .coverage
 htmlcov/
 
+# Environment Files & Secrets
+.env
+.env.*
+!.env.example
+
 # Virtual Environments
+.venv/
 .venv/
 venv/
 ENV/

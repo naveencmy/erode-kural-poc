@@ -673,3 +673,26 @@ body {
     --spacing-sidebar: 240px;
   }
 }
+
+/* ================================================================
+   Voice & Speech-to-Text Animations
+   ================================================================ */
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.voice-listening-btn {
+  animation: pulse-ring 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite !important;
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #ef4444 !important;
+  border-color: #ef4444 !important;
+}
+

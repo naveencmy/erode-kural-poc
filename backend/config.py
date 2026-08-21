@@ -5,6 +5,39 @@ from pathlib import Path
 
 # Base Paths
 BASE_DIR = Path(__file__).resolve().parent
+
+def reload_env():
+    """Reload environment variables dynamically from .env."""
+    global IMAP_SERVER, IMAP_PORT, IMAP_USERNAME, IMAP_PASSWORD
+    global SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_USE_TLS, SMTP_USE_SSL, SMTP_FROM_EMAIL, SMTP_FROM_NAME
+
+    _env_file = BASE_DIR / ".env"
+    if _env_file.exists():
+        with open(_env_file, "r", encoding="utf-8") as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    _k, _v = _k.strip(), _v.strip().strip("'\"")
+                    os.environ[_k] = _v
+
+    IMAP_SERVER = os.getenv("IMAP_SERVER", "imap.gmail.com")
+    IMAP_PORT = int(os.getenv("IMAP_PORT", "993"))
+    IMAP_USERNAME = os.getenv("IMAP_USERNAME", "naveenatdevine@gmail.com")
+    IMAP_PASSWORD = os.getenv("IMAP_PASSWORD", "")
+
+    SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp-relay.brevo.com")
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USERNAME = os.getenv("SMTP_USERNAME", "b620e2001@smtp-brevo.com")
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+    SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")
+    SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "false").lower() in ("true", "1", "yes")
+    SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "naveenatdevine@gmail.com")
+    SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "ஈரோடு மாவட்ட ஆட்சியரகம் (Erode Collectorate)")
+
+# Load on import
+reload_env()
+
 DATA_DIR = BASE_DIR / "data"
 TEMPLATES_DIR = BASE_DIR / "templates"
 UPLOADS_DIR = BASE_DIR / "uploads"
@@ -14,6 +47,7 @@ UPLOADS_PROCESSED_DIR = UPLOADS_DIR / "processed"
 UPLOADS_INCOMING_EMAILS_DIR = UPLOADS_DIR / "incoming_dev_mailbox"
 
 UPLOADS_DATASETS_DIR = UPLOADS_DIR / "datasets"
+UPLOADS_DOCUMENTS_DIR = UPLOADS_DIR / "documents"
 OUTPUTS_DIR = BASE_DIR / "outputs"
 OUTPUTS_CHARTS_DIR = OUTPUTS_DIR / "charts"
 OUTPUTS_CONTENT_DIR = OUTPUTS_DIR / "content"
@@ -28,6 +62,7 @@ for directory in [
     UPLOADS_PROCESSED_DIR,
     UPLOADS_INCOMING_EMAILS_DIR,
     UPLOADS_DATASETS_DIR,
+    UPLOADS_DOCUMENTS_DIR,
     OUTPUTS_DIR,
     OUTPUTS_CHARTS_DIR,
     OUTPUTS_CONTENT_DIR,

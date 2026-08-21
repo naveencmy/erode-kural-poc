@@ -1,12 +1,11 @@
-"""Content Router — Official Content Generation (Module 3), Chat & Document stubs."""
+"""Content Router — Chat assistant, document summarization, and content generation stubs."""
 
 import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, File, UploadFile
 from pydantic import BaseModel
 
 from modules.official_content.generator import OfficialContentGenerator
@@ -30,6 +29,7 @@ _generator = OfficialContentGenerator()
 class ChatRequest(BaseModel):
     message: str
     officer_id: str
+    source_id: Optional[str] = None
     context: Optional[str] = None
 
 
@@ -37,6 +37,11 @@ class ContentGenerateRequest(BaseModel):
     template_type: str
     fields: Dict[str, Any]
     officer_id: str
+
+
+from pipeline.rag_engine import CollectorateRAGEngine
+
+rag_engine = CollectorateRAGEngine()
 
 
 # ---------------------------------------------------------------------------
@@ -236,27 +241,34 @@ def _get_title(template_type: str, lang: str) -> str:
 
 @router.post("/api/chat")
 async def chat(req: ChatRequest):
-    """General assistant chat — stub, ready for Ollama connection."""
+    """General assistant chat backed by Collectorate RAG and Ollama LLM."""
+    result = rag_engine.query(
+        message=req.message,
+        officer_id=req.officer_id,
+        source_id=req.source_id,
+        context=req.context,
+    )
     return {
         "message_id": f"msg_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        "sources": result.get("sources", []),
+        "engine": result.get("engine", "RAG"),
         "blocks": [
             {
                 "type": "text",
-                "content": (
-                    f"வணக்கம்! உங்கள் செய்தி பெறப்பட்டது: \"{req.message}\". "
-                    "தற்போது மொத்த பணிப்பாய்வு (Bulk Workflow) தொகுதி முழுமையாக இயங்குகிறது. "
-                    "மற்ற தொகுதிகள் இணைக்கப்பட்டு வருகின்றன."
-                ),
+                "content": f"வணக்கம்! உங்கள் செய்தி பெறப்பட்டது: \"{req.message}\". "
+                           "தற்போது மொத்த பணிப்பாய்வு (Bulk Workflow) தொகுதி முழுமையாக இயங்குகிறது. "
+                           "மற்ற தொகுதிகள் இணைக்கப்பட்டு வருகின்றன.",
             },
         ],
     }
 
 
 @router.post("/api/document/upload")
-async def upload_document():
+async def upload_document(file: UploadFile = File(...)):
     """Document summarization upload — stub."""
     return {
         "document_id": f"doc_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        "file_name": file.filename,
         "status": "processing",
         "message": "ஆவண சுருக்க தொகுதி விரைவில் இணைக்கப்படும்.",
     }
@@ -269,4 +281,14 @@ async def get_document_summary(doc_id: str):
         "document_id": doc_id,
         "status": "pending",
         "message": "ஆவண சுருக்க தொகுதி விரைவில் இணைக்கப்படும்.",
+    }
+
+
+@router.post("/api/content/generate")
+async def generate_content(req: ContentGenerateRequest):
+    """Official content generation — stub."""
+    return {
+        "template_type": req.template_type,
+        "status": "pending",
+        "message": "அலுவலக உள்ளடக்க தொகுதி விரைவில் இணைக்கப்படும்.",
     }

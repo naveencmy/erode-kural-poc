@@ -30,8 +30,13 @@ def create_all_sample_datasets():
     """Create all 5 real-world administrative files."""
     files_created = []
 
-    # Dataset 1: Erode Taluk Budget 2025-26 (Excel)
-    # Includes intentional outlier in Sathyamangalam (major hill conservation project)
+    try:
+        import openpyxl
+        has_openpyxl = True
+    except ImportError:
+        has_openpyxl = False
+
+    # Dataset 1: Erode Taluk Budget 2025-26
     budget_data = {
         "வட்டம்": ["ஈரோடு", "பெருந்துறை", "பவானி", "கொடுமுடி", "மொடக்குறிச்சி", "அந்தியூர்", "கோபிசெட்டிபாளையம்", "சத்தியமங்கலம்", "நம்பியூர்", "தாளவாடி"],
         "ஒதுக்கப்பட்ட_பட்ஜெட்": [14500000, 8900000, 11200000, 6400000, 7800000, 9100000, 13400000, 48500000, 5200000, 7100000],
@@ -41,11 +46,15 @@ def create_all_sample_datasets():
         "செயலாக்க_விழுக்காடு": [88.3, 85.4, 87.5, 92.2, 88.5, 89.0, 88.8, 93.2, 92.3, 87.3],
     }
     df_budget = pd.DataFrame(budget_data)
-    budget_path = SAMPLE_DIR / "erode_taluk_budget_2026.xlsx"
-    df_budget.to_excel(budget_path, index=False, sheet_name="Budget_Allocation")
+    if has_openpyxl:
+        budget_path = SAMPLE_DIR / "erode_taluk_budget_2026.xlsx"
+        df_budget.to_excel(budget_path, index=False, sheet_name="Budget_Allocation")
+    else:
+        budget_path = SAMPLE_DIR / "erode_taluk_budget_2026.csv"
+        df_budget.to_csv(budget_path, index=False, encoding="utf-8")
     files_created.append(budget_path)
 
-    # Dataset 2: Revenue Patta Transfer & Survey Cases 2026 (Excel)
+    # Dataset 2: Revenue Patta Transfer & Survey Cases 2026
     patta_data = {
         "வட்டம்": ["ஈரோடு", "பெருந்துறை", "பவானி", "கொடுமுடி", "மொடக்குறிச்சி", "அந்தியூர்", "கோபிசெட்டிபாளையம்", "சத்தியமங்கலம்", "நம்பியூர்", "தாளவாடி"],
         "பெறப்பட்ட_மனுக்கள்": [1420, 850, 1120, 540, 780, 910, 1250, 980, 460, 510],
@@ -55,11 +64,15 @@ def create_all_sample_datasets():
         "மாதம்": ["ஜூலை 2026"] * 10,
     }
     df_patta = pd.DataFrame(patta_data)
-    patta_path = SAMPLE_DIR / "erode_revenue_patta_cases.xlsx"
-    df_patta.to_excel(patta_path, index=False, sheet_name="Patta_Cases")
+    if has_openpyxl:
+        patta_path = SAMPLE_DIR / "erode_revenue_patta_cases.xlsx"
+        df_patta.to_excel(patta_path, index=False, sheet_name="Patta_Cases")
+    else:
+        patta_path = SAMPLE_DIR / "erode_revenue_patta_cases.csv"
+        df_patta.to_csv(patta_path, index=False, encoding="utf-8")
     files_created.append(patta_path)
 
-    # Dataset 3: Social Welfare Pension Schemes (Excel)
+    # Dataset 3: Social Welfare Pension Schemes
     pension_data = {
         "வட்டம்": ["ஈரோடு", "பெருந்துறை", "பவானி", "கொடுமுடி", "மொடக்குறிச்சி", "அந்தியூர்", "கோபிசெட்டிபாளையம்", "சத்தியமங்கலம்", "நம்பியூர்", "தாளவாடி"],
         "முதியோர்_உதவித்தொகை_பயனாளிகள்": [8450, 5120, 6890, 3450, 4780, 5600, 7890, 6120, 2980, 3140],
@@ -69,8 +82,12 @@ def create_all_sample_datasets():
         "திட்டம்": ["NSAP_OAP"] * 10,
     }
     df_pension = pd.DataFrame(pension_data)
-    pension_path = SAMPLE_DIR / "erode_social_welfare_pension.xlsx"
-    df_pension.to_excel(pension_path, index=False, sheet_name="Pension_Beneficiaries")
+    if has_openpyxl:
+        pension_path = SAMPLE_DIR / "erode_social_welfare_pension.xlsx"
+        df_pension.to_excel(pension_path, index=False, sheet_name="Pension_Beneficiaries")
+    else:
+        pension_path = SAMPLE_DIR / "erode_social_welfare_pension.csv"
+        df_pension.to_csv(pension_path, index=False, encoding="utf-8")
     files_created.append(pension_path)
 
     # Dataset 4: PWD Water Bodies & Encroachments (CSV)

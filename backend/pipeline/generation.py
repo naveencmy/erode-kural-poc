@@ -170,6 +170,45 @@ class TamilDraftGenerator:
         template = self.jinja_env.get_template(template_filename)
         draft_text = template.render(**sanitized_context)
 
+        # Also support uppercase bracket tags like [APPLICANT_NAME], [DATE], [PETITION_ID]
+        app_name = sanitized_context.get("applicant_name", "")
+        file_no = sanitized_context.get("file_number", "") or source_id
+        dt_val = sanitized_context.get("date", "")
+        taluk_val = sanitized_context.get("taluk", "")
+        village_val = sanitized_context.get("village", "")
+        survey_val = sanitized_context.get("survey_number", "")
+        dept_val = sanitized_context.get("department", "")
+        mobile_val = sanitized_context.get("mobile_number", "")
+        aadhaar_val = sanitized_context.get("aadhaar_number", "")
+        summary_val = sanitized_context.get("grievance_summary", "")
+
+        addr_parts = [p for p in [village_val, f"{taluk_val} வட்டம்" if taluk_val else "", "ஈரோடு மாவட்டம்"] if p and "தகவல் இல்லை" not in p]
+        full_addr = ", ".join(addr_parts) if addr_parts else "ஈரோடு மாவட்டம்"
+
+        replacements = {
+            "[PETITION_ID]": file_no,
+            "[ORDER_ID]": file_no,
+            "[LETTER_ID]": file_no,
+            "[FILE_NUMBER]": file_no,
+            "[DATE]": dt_val,
+            "[APPLICATION_DATE]": dt_val,
+            "[APPLICANT_NAME]": app_name,
+            "[MOBILE_NUMBER]": mobile_val,
+            "[AADHAAR_NUMBER]": aadhaar_val,
+            "[TALUK_NAME]": taluk_val,
+            "[VILLAGE_NAME]": village_val,
+            "[SURVEY_NUMBER]": survey_val,
+            "[DEPARTMENT_NAME]": dept_val,
+            "[PETITION_CATEGORY]": "நிலப் பட்டா / எல்லை அளவீடு / வருவாய் ஆவணங்கள்",
+            "[SHORT_SUMMARY]": summary_val,
+            "[ADDRESS]": full_addr,
+            "[BANK_NAME]": "பாரத ஸ்டேட் வங்கி (SBI)",
+            "[ACCOUNT_NUMBER]": "XXXXXX1234",
+        }
+
+        for tag, val in replacements.items():
+            draft_text = draft_text.replace(tag, str(val))
+
         # Persist draft with grounding map and missing fields list
         save_draft(
             source_id=source_id,
