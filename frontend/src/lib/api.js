@@ -192,11 +192,60 @@ export const saveMailConfig = (configData) =>
     body: JSON.stringify(configData),
   });
 
-// ─── Content (stub) ──────────────────────────────────
+// ─── Module 3: Official Content ──────────────────────
 export const generateContent = (templateType, fields, officerId) =>
   apiCall('/content/generate', {
     method: 'POST',
     body: JSON.stringify({ template_type: templateType, fields, officer_id: officerId }),
   });
 
+export const fetchContentHistory = (officerId = null, limit = 20) => {
+  const params = new URLSearchParams();
+  if (officerId) params.set('officer_id', officerId);
+  params.set('limit', String(limit));
+  return apiCall(`/content/history?${params.toString()}`);
+};
 
+export const exportContentDocx = async (contentId, refNumber, templateType, customText = null) => {
+  const url = `/api/content/${contentId}/export-docx`;
+  const options = customText ? {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ custom_text: customText }),
+  } : { method: 'GET' };
+
+  const response = await fetch(url, options);
+  if (!response.ok) throw new Error(`Export failed: ${response.status}`);
+  const blob = await response.blob();
+  const filename = `${refNumber.replace(/\//g, '_')}_${templateType}.docx`;
+  
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+};
+
+export const exportContentPdf = async (contentId, refNumber, templateType, customText = null) => {
+  const url = `/api/content/${contentId}/export-pdf`;
+  const options = customText ? {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ custom_text: customText }),
+  } : { method: 'GET' };
+
+  const response = await fetch(url, options);
+  if (!response.ok) throw new Error(`PDF export failed: ${response.status}`);
+  const blob = await response.blob();
+  const filename = `${refNumber.replace(/\//g, '_')}_${templateType}.pdf`;
+  
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+};

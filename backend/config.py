@@ -16,6 +16,7 @@ UPLOADS_INCOMING_EMAILS_DIR = UPLOADS_DIR / "incoming_dev_mailbox"
 UPLOADS_DATASETS_DIR = UPLOADS_DIR / "datasets"
 OUTPUTS_DIR = BASE_DIR / "outputs"
 OUTPUTS_CHARTS_DIR = OUTPUTS_DIR / "charts"
+OUTPUTS_CONTENT_DIR = OUTPUTS_DIR / "content"
 
 # Ensure runtime directories exist
 for directory in [
@@ -29,6 +30,7 @@ for directory in [
     UPLOADS_DATASETS_DIR,
     OUTPUTS_DIR,
     OUTPUTS_CHARTS_DIR,
+    OUTPUTS_CONTENT_DIR,
 ]:
     directory.mkdir(parents=True, exist_ok=True)
 
