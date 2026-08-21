@@ -1,29 +1,33 @@
 import React from 'react';
 
 /**
- * Official Tamil Nadu Government Seal (தமிழ்நாடு அரசு சின்னம்).
- * Uses the authentic vector Seal_of_Tamil_Nadu.svg from the public assets.
+ * Tamil Nadu Government Emblem
+ *
+ * The actual Tamil Nadu Government emblem is stored in:
+ * public/tn-government-emblem.png
+ *
+ * Usage:
+ * <TnEmblem />
+ * <TnEmblem size={60} />
+ * <TnEmblem size={100} opacity={0.5} />
  */
-export default function TnEmblem({ size = 44, className = '', opacity = 1, style = {} }) {
-  const pixelSize = typeof size === 'number' ? `${size}px` : size;
-
+export default function TnEmblem({
+  size = 40,
+  className = '',
+  opacity = 1,
+}) {
   return (
     <img
-      src="/Seal_of_Tamil_Nadu.svg"
-      alt="Tamil Nadu Government Official Seal"
-      width={size}
-      height={size}
+      src="/Emblem_of_Tamil_Nadu.svg"
+      alt="Tamil Nadu Government Emblem"
       className={className}
       style={{
-        width: pixelSize,
-        height: pixelSize,
+        width: `${size}px`,
+        height: 'auto',
+        opacity: opacity,
         objectFit: 'contain',
-        opacity,
-        display: 'inline-block',
-        flexShrink: 0,
-        ...style,
+        display: 'block',
       }}
-      loading="eager"
     />
   );
 }

@@ -30,4 +30,3 @@ export default function MainContent() {
       return <GeneralModule />;
   }
 }
-

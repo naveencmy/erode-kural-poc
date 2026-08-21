@@ -16,7 +16,7 @@ from pipeline.database import (
     get_source,
 )
 from pipeline.mail_engine import (
-    test_mail_servers,
+    test_mail_servers as check_mail_servers,
     fetch_recent_inbox_emails,
     ingest_email_by_uid,
     send_official_email,
@@ -34,6 +34,10 @@ def setup_test_environment(monkeypatch):
         monkeypatch.setattr(config, "UPLOADS_EMAILS_DIR", tmp_path / "emails")
         monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
         monkeypatch.setattr(config, "DEV_MODE", True)
+        monkeypatch.setattr(config, "IMAP_USERNAME", "")
+        monkeypatch.setattr(config, "IMAP_PASSWORD", "")
+        monkeypatch.setattr(config, "SMTP_USERNAME", "")
+        monkeypatch.setattr(config, "SMTP_PASSWORD", "")
         
         config.UPLOADS_INCOMING_EMAILS_DIR.mkdir(parents=True, exist_ok=True)
         config.UPLOADS_EMAILS_DIR.mkdir(parents=True, exist_ok=True)
@@ -43,14 +47,23 @@ def setup_test_environment(monkeypatch):
 
 def test_mail_servers_check():
     """Verify test_mail_servers executes and returns dict structure."""
-    results = test_mail_servers(imap_user="", imap_pwd="", smtp_user="", smtp_pwd="")
+    results = check_mail_servers(imap_user="", imap_pwd="", smtp_user="", smtp_pwd="")
     assert "imap" in results
     assert "smtp" in results
 
 
 def test_mail_diagnostics_missing_credentials():
     """Verify diagnostic connection test handles unconfigured credentials safely."""
-    results = test_mail_servers(imap_user="", imap_pwd="", smtp_user="", smtp_pwd="", smtp_server="smtp.nic.in")
+    results = check_mail_servers(
+        imap_server="imap.nic.in",
+        imap_port=993,
+        imap_user="",
+        imap_pwd="",
+        smtp_server="smtp.nic.in",
+        smtp_port=587,
+        smtp_user="",
+        smtp_pwd="",
+    )
     assert results["imap"]["status"] == "failed"
     assert results["smtp"]["status"] == "failed"
 

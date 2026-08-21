@@ -7,7 +7,6 @@ import {
   editDraft,
   generateFileNumber,
   exportDocx,
-  sendOfficialEmail,
 } from '../../lib/api';
 import { formatDate, getStatusLabel, getPriorityLabel, downloadBlob } from '../../lib/utils';
 import ConfidenceBadge from '../shared/ConfidenceBadge';
@@ -24,8 +23,6 @@ import {
   Tag,
   FileCheck,
   Search,
-  Mail,
-  Send,
 } from 'lucide-react';
 
 const TABS = ['tab_ocr', 'tab_entities', 'tab_classification', 'tab_draft', 'tab_grounding'];
@@ -41,14 +38,6 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
   const [draftText, setDraftText] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [fileNumber, setFileNumber] = useState(null);
-
-  // Email Modal State
-  const [showEmailModal, setShowEmailModal] = useState(false);
-  const [emailTo, setEmailTo] = useState('');
-  const [emailSubject, setEmailSubject] = useState('');
-  const [emailBody, setEmailBody] = useState('');
-  const [emailSuccess, setEmailSuccess] = useState(null);
-
 
   useEffect(() => {
     loadDetail();
@@ -151,15 +140,15 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
           <span className="tamil-text">{t('detail.back_to_list')}</span>
         </button>
         <div style={{ flex: 1 }}>
-          <h2 className="module-title" style={{ fontSize: '1.1rem' }}>
+          <h2 className="module-title" style={{ fontSize: '1.05rem', fontWeight: 700 }}>
             {detail.file_name}
           </h2>
           <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
             <span className={`status-badge status-${detail.status}`}>{getStatusLabel(detail.status)}</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+            <span style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)' }}>
               {detail.source_type === 'email' ? '📧' : '📄'} {detail.source_id?.slice(0, 12)}…
             </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+            <span style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)' }}>
               {formatDate(detail.received_at)}
             </span>
             {fileNumber && (
@@ -168,7 +157,7 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
                 background: 'var(--color-tn-accent)',
                 color: 'var(--color-tn-primary-dark)',
                 borderRadius: 4,
-                fontSize: '0.75rem',
+                fontSize: '0.88rem',
                 fontWeight: 700,
               }}>
                 📁 {fileNumber}
@@ -179,29 +168,17 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
 
         {/* Action Buttons */}
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost btn-sm" onClick={handleGenerateFileNo} disabled={actionLoading} title={t('bulk.generate_file_no')}>
+          <button className="btn btn-ghost btn-sm" onClick={handleGenerateFileNo} disabled={actionLoading} title={t('bulk.generate_file_no')} style={{ fontSize: '0.88rem' }}>
             <Hash size={14} />
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={handleExportDocx} disabled={actionLoading} title={t('bulk.export_docx')}>
+          <button className="btn btn-ghost btn-sm" onClick={handleExportDocx} disabled={actionLoading} title={t('bulk.export_docx')} style={{ fontSize: '0.88rem' }}>
             <Download size={14} />
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => {
-              setEmailTo(detail?.entities?.find((e) => e.entity_type === 'email')?.entity_value || '');
-              setEmailSubject(`மனு ஒப்புகை விவரம் - ${fileNumber || detail.file_name}`);
-              setEmailBody(draftText || `வணக்கம். தங்களின் மனு பெறப்பட்டு கோப்பு எண் ${fileNumber || 'ஒதுக்கீடு செய்யப்படுகிறது'}.`);
-              setShowEmailModal(true);
-            }}
-            title="மனுதாரருக்கு மின்னஞ்சல் அனுப்பு"
-          >
-            <Mail size={14} />
-            <span className="tamil-text">மின்னஞ்சல் அனுப்பு</span>
           </button>
           <button
             className="btn btn-success btn-sm"
             onClick={() => handleApprove('approve')}
             disabled={actionLoading || draft?.officer_approved}
+            style={{ fontSize: '0.88rem' }}
           >
             <CheckCircle2 size={14} />
             <span className="tamil-text">{t('bulk.approve')}</span>
@@ -210,117 +187,13 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
             className="btn btn-danger btn-sm"
             onClick={() => handleApprove('reject')}
             disabled={actionLoading}
+            style={{ fontSize: '0.88rem' }}
           >
             <XCircle size={14} />
             <span className="tamil-text">{t('bulk.reject')}</span>
           </button>
         </div>
       </div>
-
-      {/* Email Modal Dialog */}
-      {showEmailModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.6)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 100,
-          padding: 20,
-        }}>
-          <div className="card animate-fade-in" style={{ maxWidth: 580, width: '100%', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Mail size={18} style={{ color: 'var(--color-tn-accent)' }} />
-                <h3 className="tamil-text" style={{ fontSize: '1rem', fontWeight: 700 }}>
-                  மனுதாரருக்கு ஒப்புகை மின்னஞ்சல் அனுப்புதல்
-                </h3>
-              </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowEmailModal(false)}>✕</button>
-            </div>
-
-            {emailSuccess && (
-              <div style={{ padding: 10, background: '#dcfce7', color: '#166534', borderRadius: 6, fontSize: '0.8rem' }}>
-                {emailSuccess}
-              </div>
-            )}
-
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>
-                பெறுநர் மின்னஞ்சல் (Petitioner Email) *
-              </label>
-              <input
-                type="email"
-                required
-                placeholder="citizen@gmail.com"
-                value={emailTo}
-                onChange={(e) => setEmailTo(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-surface-border)', background: 'var(--color-surface-input)', color: 'var(--color-text-primary)' }}
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }} className="tamil-text">
-                தலைப்பு (Subject) *
-              </label>
-              <input
-                type="text"
-                value={emailSubject}
-                onChange={(e) => setEmailSubject(e.target.value)}
-                className="tamil-text"
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-surface-border)', background: 'var(--color-surface-input)', color: 'var(--color-text-primary)' }}
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }} className="tamil-text">
-                கடித உரை (Tamil Message Body) *
-              </label>
-              <textarea
-                rows={6}
-                value={emailBody}
-                onChange={(e) => setEmailBody(e.target.value)}
-                className="tamil-text"
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-surface-border)', background: 'var(--color-surface-input)', color: 'var(--color-text-primary)', lineHeight: 1.6 }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button className="btn btn-ghost" onClick={() => setShowEmailModal(false)}>ரத்து</button>
-              <button
-                className="btn btn-primary"
-                disabled={actionLoading || !emailTo.trim()}
-                onClick={async () => {
-                  setActionLoading(true);
-                  try {
-                    const res = await sendOfficialEmail({
-                      recipient_email: emailTo.trim(),
-                      subject: emailSubject.trim(),
-                      body: emailBody.trim(),
-                      officer_id: officerId,
-                      source_id: sourceId,
-                    });
-                    setEmailSuccess(res.message || "மின்னஞ்சல் வெற்றிகரமாக அனுப்பப்பட்டது!");
-                    setTimeout(() => setShowEmailModal(false), 1500);
-                  } catch (err) {
-                    setError(err.message);
-                  } finally {
-                    setActionLoading(false);
-                  }
-                }}
-              >
-                <Send size={14} />
-                <span className="tamil-text">{actionLoading ? 'அனுப்புகிறது...' : 'அனுப்பு'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
 
       {/* Tabs */}
       <div className="tabs">
@@ -329,6 +202,7 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
             key={tab}
             className={`tab tamil-text ${activeTab === tab ? 'active' : ''}`}
             onClick={() => setActiveTab(tab)}
+            style={{ fontSize: '0.88rem' }}
           >
             {t(`detail.${tab}`)}
           </button>
@@ -336,27 +210,27 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
       </div>
 
       {/* Tab Content */}
-      <div className="card animate-fade-in" key={activeTab}>
+      <div className="card animate-fade-in" key={activeTab} style={{ padding: '12px 16px' }}>
         {/* ─── OCR Text ─────────────── */}
         {activeTab === 'tab_ocr' && (
           <div>
             {ocr_pages.length === 0 ? (
-              <p className="tamil-text" style={{ color: 'var(--color-text-muted)' }}>OCR தரவு இல்லை</p>
+              <p className="tamil-text" style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>{t('detail.no_ocr')}</p>
             ) : (
               ocr_pages.map((page, i) => (
-                <div key={page.id || i} style={{ marginBottom: 24 }}>
+                <div key={page.id || i} style={{ marginBottom: 16 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                     <FileText size={16} style={{ color: 'var(--color-text-muted)' }} />
-                    <span style={{ fontWeight: 600 }}>{t('detail.ocr_page')} {page.page_number}</span>
+                    <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{t('detail.ocr_page')} {page.page_number}</span>
                     <ConfidenceBadge score={page.avg_confidence || 0} />
                   </div>
                   <pre
                     className="tamil-text"
                     style={{
                       background: 'var(--color-surface-hover)',
-                      padding: 16,
+                      padding: '12px 16px',
                       borderRadius: 8,
-                      fontSize: '0.85rem',
+                      fontSize: '1rem',
                       lineHeight: 1.8,
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word',
@@ -376,32 +250,32 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
         {activeTab === 'tab_entities' && (
           <div>
             {entities.length === 0 ? (
-              <p className="tamil-text" style={{ color: 'var(--color-text-muted)' }}>பிரித்தெடுக்கப்பட்ட நிறுவனங்கள் இல்லை</p>
+              <p className="tamil-text" style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>{t('detail.no_entities')}</p>
             ) : (
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th className="tamil-text">{t('detail.entity_type')}</th>
-                    <th className="tamil-text">{t('detail.entity_value')}</th>
-                    <th>{t('detail.ocr_confidence')}</th>
+                    <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('detail.entity_type')}</th>
+                    <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('detail.entity_value')}</th>
+                    <th style={{ fontSize: '0.95rem' }}>{t('detail.ocr_confidence')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {entities.map((ent, i) => (
                     <tr key={i}>
-                      <td>
+                      <td style={{ fontSize: '1rem' }}>
                         <span style={{
                           padding: '2px 8px',
                           background: 'var(--color-surface-hover)',
                           borderRadius: 4,
-                          fontSize: '0.75rem',
+                          fontSize: '0.88rem',
                           fontWeight: 600,
                         }}>
                           {ent.entity_type}
                         </span>
                       </td>
-                      <td className="tamil-text">{ent.entity_value}</td>
-                      <td>
+                      <td className="tamil-text" style={{ fontSize: '1rem' }}>{ent.entity_value}</td>
+                      <td style={{ fontSize: '1rem' }}>
                         {ent.confidence != null ? (
                           <ConfidenceBadge score={ent.confidence} />
                         ) : '—'}
@@ -418,30 +292,30 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
         {activeTab === 'tab_classification' && (
           <div>
             {!classification ? (
-              <p className="tamil-text" style={{ color: 'var(--color-text-muted)' }}>வகைப்பாடு இல்லை</p>
+              <p className="tamil-text" style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>{t('detail.no_classification')}</p>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div className="card" style={{ borderLeft: '4px solid var(--color-tn-primary)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div className="card" style={{ borderLeft: '4px solid var(--color-tn-primary)', padding: '12px 16px' }}>
                   <Tag size={16} style={{ color: 'var(--color-text-muted)', marginBottom: 8 }} />
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }} className="tamil-text">
+                  <div style={{ fontSize: '0.95rem', color: 'var(--color-text-secondary)' }} className="tamil-text">
                     {t('detail.dept_label')}
                   </div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 700, marginTop: 4 }} className="tamil-text">
+                  <div style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: 4 }} className="tamil-text">
                     {classification.department}
                   </div>
                 </div>
-                <div className="card" style={{ borderLeft: '4px solid var(--color-tn-warning)' }}>
+                <div className="card" style={{ borderLeft: '4px solid var(--color-tn-warning)', padding: '12px 16px' }}>
                   <Shield size={16} style={{ color: 'var(--color-text-muted)', marginBottom: 8 }} />
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }} className="tamil-text">
+                  <div style={{ fontSize: '0.95rem', color: 'var(--color-text-secondary)' }} className="tamil-text">
                     {t('detail.priority_label')}
                   </div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 700, marginTop: 4 }} className={`priority-${classification.priority?.toLowerCase()}`}>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: 4 }} className={`priority-${classification.priority?.toLowerCase()}`}>
                     {getPriorityLabel(classification.priority)}
                   </div>
                 </div>
-                <div className="card" style={{ gridColumn: '1 / -1', borderLeft: '4px solid var(--color-tn-accent)' }}>
+                <div className="card" style={{ gridColumn: '1 / -1', borderLeft: '4px solid var(--color-tn-accent)', padding: '12px 16px' }}>
                   <FileCheck size={16} style={{ color: 'var(--color-text-muted)', marginBottom: 8 }} />
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }} className="tamil-text">
+                  <div style={{ fontSize: '0.95rem', color: 'var(--color-text-secondary)' }} className="tamil-text">
                     {t('detail.decision_label')}
                   </div>
                   <div style={{ fontSize: '0.95rem', fontWeight: 600, marginTop: 4 }} className="tamil-text">
@@ -457,12 +331,12 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
         {activeTab === 'tab_draft' && (
           <div>
             {!draft ? (
-              <p className="tamil-text" style={{ color: 'var(--color-text-muted)' }}>வரைவு தயாரிக்கப்படவில்லை</p>
+              <p className="tamil-text" style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>{t('detail.no_draft')}</p>
             ) : (
               <>
                 {/* Hallucination Score */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                  <span className="tamil-text" style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <span className="tamil-text" style={{ fontSize: '0.95rem', color: 'var(--color-text-secondary)' }}>
                     {t('detail.hallucination_score')}:
                   </span>
                   <ConfidenceBadge score={1 - (draft.hallucination_score || 0)} />
@@ -472,7 +346,7 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
                       background: '#d1fae5',
                       color: '#065f46',
                       borderRadius: 9999,
-                      fontSize: '0.7rem',
+                      fontSize: '0.88rem',
                       fontWeight: 700,
                     }}>
                       ✓ {t('bulk.approved')}
@@ -481,16 +355,16 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                     {editMode ? (
                       <>
-                        <button className="btn btn-success btn-sm" onClick={handleSaveDraft} disabled={actionLoading}>
+                        <button className="btn btn-success btn-sm" onClick={handleSaveDraft} disabled={actionLoading} style={{ fontSize: '0.88rem' }}>
                           <Save size={14} />
                           <span className="tamil-text">{t('common.save')}</span>
                         </button>
-                        <button className="btn btn-ghost btn-sm" onClick={() => { setEditMode(false); setDraftText(draft.draft_text); }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => { setEditMode(false); setDraftText(draft.draft_text); }} style={{ fontSize: '0.88rem' }}>
                           <span className="tamil-text">{t('common.cancel')}</span>
                         </button>
                       </>
                     ) : (
-                      <button className="btn btn-ghost btn-sm" onClick={() => setEditMode(true)}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditMode(true)} style={{ fontSize: '0.88rem' }}>
                         <Edit3 size={14} />
                       </button>
                     )}
@@ -506,12 +380,12 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
                     style={{
                       width: '100%',
                       minHeight: 300,
-                      padding: 16,
+                      padding: '12px 16px',
                       borderRadius: 8,
                       border: '2px solid var(--color-tn-primary)',
                       background: 'var(--color-surface-input)',
                       color: 'var(--color-text-primary)',
-                      fontSize: '0.9rem',
+                      fontSize: '1rem',
                       lineHeight: 1.8,
                       resize: 'vertical',
                       fontFamily: "'Noto Sans Tamil', sans-serif",
@@ -522,9 +396,9 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
                     className="tamil-text"
                     style={{
                       background: 'var(--color-surface-hover)',
-                      padding: 20,
+                      padding: '12px 16px',
                       borderRadius: 8,
-                      fontSize: '0.9rem',
+                      fontSize: '1rem',
                       lineHeight: 1.8,
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word',
@@ -536,8 +410,8 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
 
                 {/* Missing Fields */}
                 {draft.missing_fields?.length > 0 && (
-                  <div style={{ marginTop: 16, padding: 12, background: '#fef3c7', borderRadius: 8 }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.8rem', color: '#92400e' }}>
+                  <div style={{ marginTop: 12, padding: '12px 16px', background: '#fef3c7', borderRadius: 8 }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.95rem', color: '#92400e' }}>
                       ⚠️ Missing Fields: {draft.missing_fields.join(', ')}
                     </span>
                   </div>
@@ -551,21 +425,21 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
         {activeTab === 'tab_grounding' && (
           <div>
             {Object.keys(groundingMap).length === 0 ? (
-              <p className="tamil-text" style={{ color: 'var(--color-text-muted)' }}>ஆதார தரவு இல்லை</p>
+              <p className="tamil-text" style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>{t('detail.no_grounding')}</p>
             ) : (
               <table className="grounding-table">
                 <thead>
                   <tr>
-                    <th style={{ padding: '8px 12px', fontWeight: 600, fontSize: '0.75rem', color: 'var(--color-text-secondary)' }} className="tamil-text">
+                    <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-secondary)' }} className="tamil-text">
                       {t('detail.grounding_field')}
                     </th>
-                    <th style={{ padding: '8px 12px', fontWeight: 600, fontSize: '0.75rem', color: 'var(--color-text-secondary)' }} className="tamil-text">
+                    <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-secondary)' }} className="tamil-text">
                       {t('detail.grounding_value')}
                     </th>
-                    <th style={{ padding: '8px 12px', fontWeight: 600, fontSize: '0.75rem', color: 'var(--color-text-secondary)' }} className="tamil-text">
+                    <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-secondary)' }} className="tamil-text">
                       {t('detail.grounding_source')}
                     </th>
-                    <th style={{ padding: '8px 12px', fontWeight: 600, fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                    <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-secondary)' }}>
                       {t('detail.grounding_confidence')}
                     </th>
                   </tr>
@@ -573,9 +447,9 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
                 <tbody>
                   {Object.entries(groundingMap).map(([field, entry]) => (
                     <tr key={field}>
-                      <td className="field-name tamil-text">{field}</td>
-                      <td className="field-value tamil-text">
-                        {entry.value || <span style={{ color: 'var(--color-tn-danger)' }}>[தகவல் இல்லை]</span>}
+                      <td className="field-name tamil-text" style={{ fontSize: '1rem' }}>{field}</td>
+                      <td className="field-value tamil-text" style={{ fontSize: '1rem' }}>
+                        {entry.value || <span style={{ color: 'var(--color-tn-danger)' }}>{t('common.no_data')}</span>}
                       </td>
                       <td>
                         <div className="field-value" style={{ fontSize: '0.75rem' }}>

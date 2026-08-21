@@ -1,11 +1,12 @@
-"""Content Router — Chat assistant, document summarization, and content generation stubs."""
+"""Content Router — Chat assistant and official content generation."""
 
 import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from modules.official_content.generator import OfficialContentGenerator
@@ -17,10 +18,12 @@ from pipeline.database import (
     update_content_docx_path,
     log_audit,
 )
+from pipeline.rag_engine import CollectorateRAGEngine
 
 logger = logging.getLogger("ContentRouter")
 router = APIRouter(tags=["Module 3 - Official Content"])
 _generator = OfficialContentGenerator()
+rag_engine = CollectorateRAGEngine()
 
 
 # ---------------------------------------------------------------------------
@@ -39,9 +42,8 @@ class ContentGenerateRequest(BaseModel):
     officer_id: str
 
 
-from pipeline.rag_engine import CollectorateRAGEngine
-
-rag_engine = CollectorateRAGEngine()
+class CustomExportRequest(BaseModel):
+    custom_text: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -123,10 +125,6 @@ async def get_content_history(officer_id: Optional[str] = None, limit: int = 20)
     """List previously generated official content documents."""
     records = list_official_content(officer_id=officer_id, limit=limit)
     return {"status": "success", "count": len(records), "items": records}
-
-
-class CustomExportRequest(BaseModel):
-    custom_text: Optional[str] = None
 
 
 @router.get("/api/content/{content_id}/export-docx")
@@ -236,7 +234,7 @@ def _get_title(template_type: str, lang: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Chat & Document stubs (unchanged)
+# General Assistant Chat (RAG Engine)
 # ---------------------------------------------------------------------------
 
 @router.post("/api/chat")
@@ -255,40 +253,7 @@ async def chat(req: ChatRequest):
         "blocks": [
             {
                 "type": "text",
-                "content": f"வணக்கம்! உங்கள் செய்தி பெறப்பட்டது: \"{req.message}\". "
-                           "தற்போது மொத்த பணிப்பாய்வு (Bulk Workflow) தொகுதி முழுமையாக இயங்குகிறது. "
-                           "மற்ற தொகுதிகள் இணைக்கப்பட்டு வருகின்றன.",
+                "content": result.get("answer", "தகவல் செயலாக்க முடியவில்லை."),
             },
         ],
-    }
-
-
-@router.post("/api/document/upload")
-async def upload_document(file: UploadFile = File(...)):
-    """Document summarization upload — stub."""
-    return {
-        "document_id": f"doc_{datetime.now().strftime('%Y%m%d%H%M%S')}",
-        "file_name": file.filename,
-        "status": "processing",
-        "message": "ஆவண சுருக்க தொகுதி விரைவில் இணைக்கப்படும்.",
-    }
-
-
-@router.get("/api/document/{doc_id}/summary")
-async def get_document_summary(doc_id: str):
-    """Document summary retrieval — stub."""
-    return {
-        "document_id": doc_id,
-        "status": "pending",
-        "message": "ஆவண சுருக்க தொகுதி விரைவில் இணைக்கப்படும்.",
-    }
-
-
-@router.post("/api/content/generate")
-async def generate_content(req: ContentGenerateRequest):
-    """Official content generation — stub."""
-    return {
-        "template_type": req.template_type,
-        "status": "pending",
-        "message": "அலுவலக உள்ளடக்க தொகுதி விரைவில் இணைக்கப்படும்.",
     }

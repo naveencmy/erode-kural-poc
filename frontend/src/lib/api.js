@@ -93,6 +93,8 @@ export const uploadDocument = (file, officerId = 'OFFICER') => {
   return apiCall('/v1/document/upload', { method: 'POST', body: formData });
 };
 
+export const fetchDocumentSummary = (docId) => apiCall(`/document/${docId}/summary`);
+
 // ─── Chat & Assistant ────────────────────────────────
 export const sendChat = (message, officerId, sourceId = null, context = null) =>
   apiCall('/chat', {

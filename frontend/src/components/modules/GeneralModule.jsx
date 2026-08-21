@@ -1,203 +1,244 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import useAppStore from '../../stores/appStore';
-import useChatStore from '../../stores/useChatStore';
-import { sendChat, uploadDocument, trackSuggestionClick } from '../../lib/api';
+import { sendChat, uploadDocument } from '../../lib/api';
 import TnEmblem from '../icons/TnEmblem';
 import {
   Send,
   Bot,
   User,
-  Sparkles,
-  Paperclip,
-  Mic,
-  MicOff,
+  Copy,
+  Check,
   Volume2,
   VolumeX,
+  Trash2,
+  Mic,
+  MicOff,
   FileText,
+  RefreshCw,
+  Download,
+  Paperclip,
+  Upload,
   X,
-  Languages,
+  Plus,
+  Sparkles,
+  ChevronRight,
+  RotateCcw,
+  Share2,
 } from 'lucide-react';
 
-// Pastel palette modeled after the reference speech-bubble design
-const PASTEL_BUBBLES = [
-  {
-    bg: '#e8f5e9',
-    color: '#1b5e20',
-    border: '#a5d6a7',
-    shadow: '#81c784',
-  },
-  {
-    bg: '#ffebee',
-    color: '#b71c1c',
-    border: '#ffcdd2',
-    shadow: '#ef9a9a',
-  },
-  {
-    bg: '#e1f5fe',
-    color: '#01579b',
-    border: '#b3e5fc',
-    shadow: '#81d4fa',
-  },
-  {
-    bg: '#fff8e1',
-    color: '#e65100',
-    border: '#ffe082',
-    shadow: '#ffd54f',
-  },
-  {
-    bg: '#f3e5f5',
-    color: '#4a148c',
-    border: '#e1bee7',
-    shadow: '#ce93d8',
-  },
+const DOC_SUGGESTION_KEYS = [
+  'general.doc_suggestion1',
+  'general.doc_suggestion2',
+  'general.doc_suggestion3',
+  'general.doc_suggestion4',
 ];
 
-const DEFAULT_PROMPTS = [
-  { text: "வருவாய்த்துறை நில அளவீடு மற்றும் பட்டா மாறுதல் தொடர்பான அரசு வழிகாட்டுதல்கள் என்ன?", label: "பட்டா & நில அளவீடு" },
-  { text: "சமூக பாதுகாப்பு திட்டத்தில் முதியோர் ஓய்வூதியம் (OAP) பெறுவதற்கான தகுதிகள் மற்றும் விண்ணப்பிக்கும் முறை என்ன?", label: "முதியோர் உதவித்தொகை" },
-  { text: "பொதுப்பணித்துறை சாலை பராமரிப்பு மற்றும் குடிநீர் விநியோக குறைதீர்க்கும் நெறிமுறைகள் என்ன?", label: "குடிநீர் & சாலை பராமரிப்பு" },
-  { text: "அரசு இ-சேவை மூலம் வாரிசுச் சான்றிதழ் மற்றும் வருமானச் சான்றிதழ் பெறும் நடைமுறைகள் என்ன?", label: "அரசு சான்றிதழ்கள்" },
-];
+
 
 export default function GeneralModule() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { officerId } = useAppStore();
-  const {
-    isListening,
-    speechLang,
-    setSpeechLang,
-    startListening,
-    stopListening,
-    speakText,
-    stopSpeech,
-    speakingMessageId,
-  } = useChatStore();
-
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
+  const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState(null);
+  const [speakingId, setSpeakingId] = useState(null);
+  const [isListening, setIsListening] = useState(false);
 
-  // Attached Document State
-  const [attachedDoc, setAttachedDoc] = useState(null);
-  const [uploadingDoc, setUploadingDoc] = useState(false);
-  const [docSuggestions, setDocSuggestions] = useState([]);
-  const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
+  const chatContainerRef = useRef(null);
+  const textareaRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  const scrollToBottom = (smooth = true) => {
+    const doScroll = () => {
+      const container = chatContainerRef.current;
+      if (container) {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: smooth ? 'smooth' : 'auto',
+        });
+      }
+    };
+    doScroll();
+    requestAnimationFrame(doScroll);
+    setTimeout(doScroll, 40);
+    setTimeout(doScroll, 120);
+    setTimeout(doScroll, 250);
+  };
 
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollToBottom(true);
   }, [messages, loading]);
 
   useEffect(() => {
-    return () => {
-      stopSpeech();
-      stopListening();
-    };
+    const container = chatContainerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(() => {
+      if (container) {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: 'smooth',
+        });
+      }
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
   }, []);
 
-  // ─── Document Upload & Analysis ──────────────────────────────────
-  const handleFileSelect = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploadingDoc(true);
+  const handleFileChange = async (e) => {
+    const uploadedFile = e.target.files?.[0];
+    if (!uploadedFile) return;
+    setFile(uploadedFile);
     try {
-      const res = await uploadDocument(file, officerId);
-      const suggestions = res.suggestions || [];
-      const extractedSuggestions = suggestions.map((s) => ({
-        id: s.suggestion_id || `sug_${Date.now()}_${Math.random()}`,
-        text: s.text_tamil || s.text_english || s.text || '',
-        groundedIn: s.grounded_in || '',
-        outputType: s.expected_output_type || 'text',
-      }));
-
-      setAttachedDoc({
-        sourceId: res.source_id,
-        fileName: res.file_name || file.name,
-        fileType: res.file_type || 'pdf',
-        pageCount: res.page_count || 1,
-        fingerprint: res.fingerprint,
-      });
-
-      setDocSuggestions(extractedSuggestions);
-
-      // System notification message
-      const sysMsg = {
-        id: `sys_${Date.now()}`,
-        sender: 'ai',
-        isDocNotification: true,
-        fileName: res.file_name || file.name,
-        fileType: res.file_type || 'pdf',
-        sourceId: res.source_id,
-        text: `📄 **${res.file_name || file.name}** ஆவணம் வெற்றிகரமாக இணைக்கப்பட்டு பகுப்பாய்வு செய்யப்பட்டது.\nஇக்கோப்பின் உள்ளடக்கம் சார்ந்த உடனடி பரிந்துரை வினவல்கள் கீழே தயார் செய்யப்பட்டுள்ளன.`,
-        timestamp: new Date().toLocaleTimeString('ta-IN', { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, sysMsg]);
+      await uploadDocument(uploadedFile);
     } catch (err) {
-      alert(`ஆவண பதிவேற்ற பிழை: ${err.message || 'பதிவேற்ற முடியவில்லை'}`);
-    } finally {
-      setUploadingDoc(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      console.error('File upload error:', err);
     }
   };
 
-  const handleRemoveAttachedDoc = () => {
-    setAttachedDoc(null);
-    setDocSuggestions([]);
+  // Handle Speech Recognition
+  const toggleListening = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Speech recognition is not supported in this browser.');
+      return;
+    }
+
+    if (isListening) {
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = i18n.language === 'ta' ? 'ta-IN' : 'en-IN';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+    };
+
+    recognition.start();
   };
 
-  // ─── Send Chat Message ──────────────────────────────────────────
-  const handleSend = async (textToSend, fromVoice = false) => {
-    const messageText = textToSend || input;
-    if (!messageText.trim() || loading) return;
+  // Text to Speech
+  const toggleSpeech = (id, text) => {
+    if (!('speechSynthesis' in window)) return;
 
+    if (speakingId === id) {
+      window.speechSynthesis.cancel();
+      setSpeakingId(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = i18n.language === 'ta' ? 'ta-IN' : 'en-IN';
+    utterance.onend = () => setSpeakingId(null);
+    utterance.onerror = () => setSpeakingId(null);
+
+    setSpeakingId(id);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Copy Message Text
+  const handleCopy = (id, text) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  // Share Message
+  const handleShare = (text) => {
+    if (!text) return;
+    if (navigator.share) {
+      navigator.share({ title: 'AI Assistant Response', text }).catch(() => { });
+    } else {
+      navigator.clipboard.writeText(text);
+      alert('Copied to clipboard!');
+    }
+  };
+
+  // Clear Conversation
+  const handleClear = () => {
+    if (window.confirm(t('general.confirm_clear'))) {
+      setMessages([]);
+      window.speechSynthesis?.cancel();
+      setSpeakingId(null);
+      setFile(null);
+    }
+  };
+
+  // Export Transcript
+  const handleExport = () => {
+    if (messages.length === 0) return;
+    const textContent = messages
+      .map((m) => `[${m.timestamp}] ${m.sender.toUpperCase()}: ${m.text}`)
+      .join('\n\n');
+    const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `General_Assistant_Transcript_${Date.now()}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleSend = async (textToSend) => {
+    const rawText = textToSend || input;
+    if ((!rawText.trim() && !file) || loading) return;
+
+    const messageText = file
+      ? `[${t('common.attachment')}: ${file.name}] ${rawText.trim() || t('general.doc_received')}`
+      : rawText.trim();
+
+    const currentLocale = i18n.language === 'ta' ? 'ta-IN' : 'en-IN';
     const userMsg = {
-      id: `usr_${Date.now()}`,
+      id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       sender: 'user',
-      text: messageText.trim(),
-      timestamp: new Date().toLocaleTimeString('ta-IN', { hour: '2-digit', minute: '2-digit' }),
+      text: messageText,
+      timestamp: new Date().toLocaleTimeString(currentLocale, { hour: '2-digit', minute: '2-digit' }),
     };
 
     setMessages((prev) => [...prev, userMsg]);
     if (!textToSend) setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = '38px';
+    }
+    setFile(null);
     setLoading(true);
+    scrollToBottom(true);
 
     try {
-      const res = await sendChat(
-        messageText.trim(),
-        officerId,
-        attachedDoc ? attachedDoc.sourceId : null,
-        attachedDoc ? `Attached File: ${attachedDoc.fileName}` : null
-      );
-
-      const aiContent = res.blocks?.[0]?.content || 'செயலாக்கப்பட்டது.';
-      const newMsgId = res.message_id || `ai_${Date.now()}`;
+      const res = await sendChat(messageText, officerId);
+      const aiContent = res.blocks?.[0]?.content || 'Completed.';
       const aiMsg = {
-        id: newMsgId,
+        id: res.message_id ? `${res.message_id}_${Math.random().toString(36).substring(2, 7)}` : `ai_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         sender: 'ai',
         text: aiContent,
-        sources: res.sources || [],
-        engine: res.engine || null,
-        timestamp: new Date().toLocaleTimeString('ta-IN', { hour: '2-digit', minute: '2-digit' }),
+        timestamp: new Date().toLocaleTimeString(currentLocale, { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, aiMsg]);
-
-      // If officer spoke query, auto-play response in Tamil / English
-      if (fromVoice) {
-        speakText(newMsgId, aiContent);
-      }
     } catch (err) {
       const errorMsg = {
-        id: `err_${Date.now()}`,
+        id: `err_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         sender: 'ai',
-        text: `பிழை: ${err.message || 'சேவையகத்தை தொடர்பு கொள்ள முடியவில்லை.'}`,
-        timestamp: new Date().toLocaleTimeString('ta-IN', { hour: '2-digit', minute: '2-digit' }),
+        text: `${t('common.error')}: ${err.message || t('general.server_error')}`,
+        timestamp: new Date().toLocaleTimeString(currentLocale, { hour: '2-digit', minute: '2-digit' }),
         isError: true,
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setLoading(false);
+      scrollToBottom(true);
     }
   };
 
@@ -208,244 +249,289 @@ export default function GeneralModule() {
     }
   };
 
-  const handleSuggestionClick = (sug) => {
-    if (sug.id && !sug.id.startsWith('sug_') && !sug.id.startsWith('def_')) {
-      trackSuggestionClick(sug.id).catch(() => {});
-    }
-    handleSend(sug.text);
-  };
-
-  // ─── Speech-to-Text (Real-Time Speed-to-Typing Streaming) ────────
-  const toggleVoiceInput = () => {
-    if (isListening) {
-      stopListening();
-    } else {
-      startListening(
-        (interimText) => {
-          setInput(interimText);
-        },
-        (finalText) => {
-          if (finalText && finalText.trim()) {
-            handleSend(finalText.trim(), true);
-          }
-        }
-      );
-    }
-  };
-
-  const activeSuggestionsList = attachedDoc && docSuggestions.length > 0
-    ? docSuggestions
-    : DEFAULT_PROMPTS.map((p, idx) => ({ id: `def_${idx}`, text: p.text, label: p.label }));
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', gap: 12 }}>
-      {/* Top Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <h1 className="module-title tamil-text">{t('sidebar.general')}</h1>
-          <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }} className="tamil-text">
-            ஈரோடு மாவட்ட நிர்வாக தேவைகளுக்கான செயற்கை நுண்ணறிவு உதவியாளர்
-          </p>
-        </div>
-
-        {/* Right Tools: Language Toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button
-            className="btn btn-ghost"
-            onClick={() => setSpeechLang(speechLang === 'ta-IN' ? 'en-IN' : 'ta-IN')}
-            title="குரல் மொழி மாற்று (Toggle Voice Language)"
-            style={{ fontSize: '0.78rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <Languages size={15} style={{ color: 'var(--color-tn-accent)' }} />
-            <span style={{ fontWeight: 600 }}>{speechLang === 'ta-IN' ? 'தமிழ் (ta-IN)' : 'English (en-IN)'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Messages Scroll Area — Clean and Free of Center Clutter */}
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 110px)', gap: 10, overflow: 'hidden' }}>
+      {/* Main Center Container */}
       <div
+        ref={chatContainerRef}
         className="card"
         style={{
           flex: 1,
+          minHeight: 0,
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
-          gap: 16,
-          padding: '20px 24px',
+          gap: 10,
+          padding: '12px 16px',
           position: 'relative',
           background: 'var(--color-surface-card)',
+          border: '1px solid var(--color-surface-border)',
+          borderRadius: 16,
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.03)',
         }}
       >
+        {/* Subtle Background Emblem Watermark */}
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            pointerEvents: 'none',
+            zIndex: 0,
+            opacity: 0.05,
+            userSelect: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <TnEmblem size={280} opacity={1} />
+        </div>
+
+        {/* Actions Bar if messages present */}
+        {messages.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 8,
+              paddingBottom: 6,
+              borderBottom: '1px solid var(--color-surface-border)',
+              position: 'relative',
+              zIndex: 1,
+            }}
+          >
+            <button
+              onClick={handleExport}
+              className="btn btn-ghost"
+              title={t('general.export')}
+              style={{
+                fontSize: '0.88rem',
+                padding: '5px 12px',
+                borderRadius: 6,
+                gap: 5,
+                color: 'var(--color-text-secondary)',
+                border: '1px solid var(--color-surface-border)',
+                background: 'var(--color-surface-bg)',
+              }}
+            >
+              <Download size={14} />
+              <span>{t('general.export')}</span>
+            </button>
+            <button
+              onClick={handleClear}
+              className="btn btn-ghost"
+              title={t('general.clear')}
+              style={{
+                fontSize: '0.88rem',
+                padding: '5px 12px',
+                borderRadius: 6,
+                gap: 5,
+                color: '#ef4444',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                background: 'rgba(239, 68, 68, 0.05)',
+              }}
+            >
+              <Trash2 size={14} />
+              <span>{t('general.clear')}</span>
+            </button>
+          </div>
+        )}
+
         {messages.length === 0 ? (
-          /* Clean, clutter-free empty state with subtle watermark */
           <div
             style={{
               margin: 'auto',
+              maxWidth: 780,
+              width: '100%',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center',
-              opacity: 0.18,
-              userSelect: 'none',
-              pointerEvents: 'none',
+              gap: 12,
+              padding: '12px 10px',
+              position: 'relative',
+              zIndex: 1,
             }}
           >
-            <TnEmblem size={96} />
+            {/* Hero Emblem Banner */}
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+              <div
+                style={{
+                  position: 'relative',
+                  width: 68,
+                  height: 68,
+                  borderRadius: 20,
+                  background: 'linear-gradient(135deg, var(--color-tn-primary) 0%, #0f2540 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 8px 20px rgba(26, 58, 92, 0.3)',
+                }}
+              >
+                <TnEmblem size={44} opacity={0.95} className="text-[#c8a951]" />
+              </div>
+              <h2
+                className="tamil-text"
+                style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--color-text-primary)', marginTop: 4 }}
+              >
+                {t('general.welcome', { officerId })}
+              </h2>
+              <p
+                className="tamil-text"
+                style={{
+                  fontSize: '0.95rem',
+                  color: 'var(--color-text-secondary)',
+                  maxWidth: 500,
+                  lineHeight: 1.5,
+                }}
+              >
+                {t('general.subtitle')}
+              </p>
+            </div>
           </div>
         ) : (
-          messages.map((m) => (
-            <div
-              key={m.id}
-              style={{
-                display: 'flex',
-                gap: 12,
-                alignSelf: m.sender === 'user' ? 'flex-end' : 'flex-start',
-                maxWidth: '85%',
-              }}
-            >
-              {m.sender === 'ai' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', flex: 1, position: 'relative', zIndex: 1 }}>
+            {messages.map((m) => {
+              const isUser = m.sender === 'user';
+              return (
                 <div
+                  key={m.id}
                   style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 10,
-                    background: 'var(--color-tn-primary)',
-                    color: 'white',
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+                    gap: 12,
+                    alignSelf: isUser ? 'flex-end' : 'flex-start',
+                    maxWidth: '82%',
+                    flexDirection: isUser ? 'row-reverse' : 'row',
                   }}
                 >
-                  <Bot size={18} />
-                </div>
-              )}
-              <div style={{ flex: 1 }}>
-                <div
-                  className="tamil-text"
-                  style={{
-                    padding: '14px 18px',
-                    borderRadius: 12,
-                    background:
-                      m.sender === 'user'
-                        ? 'var(--color-tn-primary)'
-                        : m.isError
-                        ? '#fee2e2'
-                        : m.isDocNotification
-                        ? 'rgba(26, 58, 92, 0.07)'
-                        : 'var(--color-surface-hover)',
-                    color:
-                      m.sender === 'user'
-                        ? 'white'
-                        : m.isError
-                        ? '#991b1b'
-                        : 'var(--color-text-primary)',
-                    fontSize: '0.9rem',
-                    lineHeight: 1.75,
-                    whiteSpace: 'pre-wrap',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                    border: m.isDocNotification ? '1px solid rgba(26, 58, 92, 0.15)' : 'none',
-                  }}
-                >
-                  {m.text}
-                </div>
+                  {/* Avatar */}
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      background: isUser
+                        ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                        : 'linear-gradient(135deg, var(--color-tn-primary) 0%, #0f2540 100%)',
+                      color: 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      boxShadow: '0 3px 8px rgba(0,0,0,0.1)',
+                    }}
+                  >
+                    {isUser ? <User size={18} /> : <Bot size={18} />}
+                  </div>
 
-                {/* Sources & Controls Below AI Response */}
-                {m.sender === 'ai' && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, flexWrap: 'wrap', gap: 6 }}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                      {m.sources && m.sources.map((s, idx) => (
-                        <span
-                          key={idx}
-                          className="tamil-text"
-                          style={{
-                            fontSize: '0.68rem',
-                            background: 'rgba(26, 58, 92, 0.08)',
-                            color: 'var(--color-tn-primary)',
-                            padding: '2px 8px',
-                            borderRadius: 6,
-                            border: '1px solid rgba(26, 58, 92, 0.15)',
-                          }}
-                        >
-                          📄 {s}
-                        </span>
-                      ))}
-                      {m.engine && (
-                        <span
-                          style={{
-                            fontSize: '0.65rem',
-                            color: 'var(--color-text-muted)',
-                            padding: '2px 4px',
-                          }}
-                        >
-                          ⚡ {m.engine}
-                        </span>
-                      )}
+                  {/* Content Bubble */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: isUser ? 'flex-end' : 'flex-start' }}>
+                    <div
+                      className="tamil-text"
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: isUser ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
+                        background: isUser
+                          ? 'linear-gradient(135deg, var(--color-tn-primary) 0%, var(--color-tn-primary-light) 100%)'
+                          : m.isError
+                            ? '#fef2f2'
+                            : 'var(--color-surface-bg)',
+                        color: isUser
+                          ? '#ffffff'
+                          : m.isError
+                            ? '#991b1b'
+                            : 'var(--color-text-primary)',
+                        border: isUser
+                          ? 'none'
+                          : m.isError
+                            ? '1px solid #fecaca'
+                            : '1px solid var(--color-surface-border)',
+                        fontSize: '1rem',
+                        lineHeight: 1.65,
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        overflowWrap: 'break-word',
+                        boxShadow: isUser
+                          ? '0 4px 12px rgba(26, 58, 92, 0.2)'
+                          : '0 2px 8px rgba(0,0,0,0.03)',
+                      }}
+                    >
+                      {m.text}
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {!m.isDocNotification && (
-                        <button
-                          className="btn btn-ghost"
-                          onClick={() => speakText(m.id, m.text)}
-                          title={speakingMessageId === m.id ? 'பேச்சை நிறுத்து' : 'பதிலை தமிழில் வாசி (Text-to-Speech)'}
-                          style={{
-                            padding: '3px 8px',
-                            fontSize: '0.72rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 4,
-                            color: speakingMessageId === m.id ? '#ef4444' : 'var(--color-tn-primary)',
-                          }}
-                        >
-                          {speakingMessageId === m.id ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                          <span>{speakingMessageId === m.id ? 'நிறுத்து' : 'ஒலி வடிவில் கேள்'}</span>
-                        </button>
+                    {/* Message Metadata & Action Toolbar */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        marginTop: 4,
+                        fontSize: '0.88rem',
+                        color: 'var(--color-text-muted)',
+                        padding: '0 4px',
+                      }}
+                    >
+                      <span>{m.timestamp}</span>
+
+                      {!isUser && !m.isError && (
+                        <>
+                          <span>•</span>
+                          <button
+                            onClick={() => handleCopy(m.id, m.text)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              color: copiedId === m.id ? '#10b981' : 'var(--color-text-muted)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontSize: '0.88rem',
+                            }}
+                            title={t('general.copy')}
+                          >
+                            {copiedId === m.id ? <Check size={12} /> : <Copy size={12} />}
+                            <span>{copiedId === m.id ? t('general.copied') : t('general.copy')}</span>
+                          </button>
+
+                          <span>•</span>
+                          <button
+                            onClick={() => toggleSpeech(m.id, m.text)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              color: speakingId === m.id ? '#3b82f6' : 'var(--color-text-muted)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontSize: '0.88rem',
+                            }}
+                            title={t('general.read')}
+                          >
+                            {speakingId === m.id ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                            <span>{speakingId === m.id ? t('general.stop') : t('general.read')}</span>
+                          </button>
+                        </>
                       )}
-                      <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
-                        {m.timestamp}
-                      </span>
                     </div>
                   </div>
-                )}
-
-                {m.sender === 'user' && (
-                  <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: 4, textAlign: 'right' }}>
-                    {m.timestamp}
-                  </div>
-                )}
-              </div>
-
-              {m.sender === 'user' && (
-                <div
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 10,
-                    background: 'var(--color-surface-hover)',
-                    color: 'var(--color-text-primary)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <User size={18} />
                 </div>
-              )}
-            </div>
-          ))
+              );
+            })}
+          </div>
         )}
 
+        {/* Loading Indicator */}
         {loading && (
           <div style={{ display: 'flex', gap: 12, alignSelf: 'flex-start' }}>
             <div
               style={{
-                width: 34,
-                height: 34,
+                width: 36,
+                height: 36,
                 borderRadius: 10,
-                background: 'var(--color-tn-primary)',
+                background: 'linear-gradient(135deg, var(--color-tn-primary) 0%, #0f2540 100%)',
                 color: 'white',
                 display: 'flex',
                 alignItems: 'center',
@@ -456,17 +542,18 @@ export default function GeneralModule() {
             </div>
             <div
               style={{
-                padding: '12px 18px',
-                borderRadius: 12,
-                background: 'var(--color-surface-hover)',
+                padding: '12px 16px',
+                borderRadius: '4px 16px 16px 16px',
+                background: 'var(--color-surface-bg)',
+                border: '1px solid var(--color-surface-border)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
+                gap: 10,
               }}
             >
-              <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
-              <span className="tamil-text" style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
-                {attachedDoc ? 'கோப்புத் தகவல்களை ஆய்வு செய்கிறது...' : 'செயலாக்குகிறது...'}
+              <RefreshCw className="animate-spin text-blue-500" size={16} />
+              <span className="tamil-text" style={{ fontSize: '0.95rem', color: 'var(--color-text-secondary)' }}>
+                {t('general.processing')}
               </span>
             </div>
           </div>
@@ -474,229 +561,275 @@ export default function GeneralModule() {
         <div ref={scrollRef} />
       </div>
 
-      {/* ─── DYNAMIC FLOW-WISE PASTEL SPEECH-BUBBLE PROMPT CHIPS (STACKED VERTICALLY) ─── */}
-      {activeSuggestionsList.length > 0 && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-            alignItems: 'flex-start',
-            padding: '2px 4px 6px',
-          }}
-        >
-          <div
-            className="tamil-text"
-            style={{
-              fontSize: '0.74rem',
-              color: 'var(--color-text-muted)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              fontWeight: 600,
-              marginBottom: 2,
-            }}
-          >
-            <Sparkles size={13} style={{ color: '#ea580c' }} />
-            <span>{attachedDoc ? 'ஆவண வினவல்கள் (பரிந்துரைகள்):' : 'பரிந்துரை வினவல்கள்:'}</span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, alignItems: 'flex-start', width: '100%' }}>
-            {activeSuggestionsList.map((sug, idx) => {
-              const palette = PASTEL_BUBBLES[idx % PASTEL_BUBBLES.length];
-
-              return (
-                <button
-                  key={sug.id || idx}
-                  onClick={() => handleSuggestionClick(sug)}
-                  className="tamil-text"
-                  style={{
-                    fontSize: '0.82rem',
-                    fontWeight: 600,
-                    padding: '8px 16px',
-                    borderRadius: '16px 16px 16px 4px', // Speech-bubble tail style
-                    background: palette.bg,
-                    border: `1.5px solid ${palette.border}`,
-                    color: palette.color,
-                    boxShadow: `0 2.5px 0 ${palette.shadow}, 0 3px 6px rgba(0,0,0,0.04)`,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    maxWidth: '92%',
-                    textAlign: 'left',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = `0 4.5px 0 ${palette.shadow}, 0 6px 12px rgba(0,0,0,0.08)`;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0px)';
-                    e.currentTarget.style.boxShadow = `0 2.5px 0 ${palette.shadow}, 0 3px 6px rgba(0,0,0,0.04)`;
-                  }}
-                  onMouseDown={(e) => {
-                    e.currentTarget.style.transform = 'translateY(1px)';
-                    e.currentTarget.style.boxShadow = `0 1px 0 ${palette.shadow}`;
-                  }}
-                >
-                  <span>{sug.text}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ─── INPUT DOCK WITH FILE ATTACH & STREAMING SPEECH ─────────────── */}
+      {/* Input Dock */}
       <div
+        className="chat-input-container"
         style={{
           display: 'flex',
           flexDirection: 'column',
+          gap: 10,
+          padding: '12px 16px',
           background: 'var(--color-surface-card)',
           border: '1px solid var(--color-surface-border)',
-          borderRadius: 14,
-          padding: '10px 14px',
-          gap: 8,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
+          borderRadius: 16,
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+          position: 'relative',
+          zIndex: 10,
+          width: '100%',
+          maxWidth: '100%',
+          boxSizing: 'border-box',
+          flexShrink: 0,
         }}
       >
-        {/* Attached Document Pill (if active) */}
-        {attachedDoc && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: 'rgba(26, 58, 92, 0.06)',
-              border: '1px solid rgba(26, 58, 92, 0.15)',
-              borderRadius: 8,
-              padding: '4px 10px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
-              <FileText size={14} style={{ color: 'var(--color-tn-primary)', flexShrink: 0 }} />
-              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-tn-primary)' }} className="truncate">
-                {attachedDoc.fileName}
-              </span>
-              <span style={{ fontSize: '0.68rem', color: 'var(--color-text-muted)' }}>
-                ({attachedDoc.fileType.toUpperCase()})
-              </span>
-            </div>
-            <button
-              onClick={handleRemoveAttachedDoc}
-              title="இணைப்பை நீக்கு"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 2 }}
+        {/* Hidden File Input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.docx,.txt"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+
+        {/* Attached File Section: 1. Suggestions (Vertical), 2. Document Chip */}
+        {file && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* 1. 2x2 Grid of 4 Document Suggestions (Shown only when input is empty) */}
+            {input.trim() === '' && (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: 8,
+                  width: '100%',
+                  boxSizing: 'border-box',
+                }}
+              >
+                {DOC_SUGGESTION_KEYS.map((key, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => handleSend(t(key))}
+                    className="tamil-text"
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 10,
+                      background: 'rgba(200, 169, 81, 0.08)',
+                      border: '1px solid rgba(200, 169, 81, 0.25)',
+                      color: 'var(--color-text-primary)',
+                      fontSize: '0.88rem',
+                      fontWeight: 500,
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 6,
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      minWidth: 0,
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(200, 169, 81, 0.18)';
+                      e.currentTarget.style.borderColor = 'var(--color-tn-accent)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(200, 169, 81, 0.08)';
+                      e.currentTarget.style.borderColor = 'rgba(200, 169, 81, 0.25)';
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
+                      <Sparkles size={14} style={{ color: 'var(--color-tn-accent)', flexShrink: 0 }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                        {t(key)}
+                      </span>
+                    </div>
+                    <ChevronRight size={14} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* 2. Attached File Preview Chip (Single-Line Inline Layout) */}
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 12px',
+                borderRadius: 10,
+                background: 'var(--color-surface-bg)',
+                border: '1px solid var(--color-surface-border)',
+                fontSize: '0.88rem',
+                color: 'var(--color-text-primary)',
+                maxWidth: '100%',
+                boxSizing: 'border-box',
+                alignSelf: 'flex-start',
+              }}
             >
-              <X size={14} />
-            </button>
+              <FileText size={16} style={{ color: 'var(--color-tn-primary)', flexShrink: 0 }} />
+              <span
+                style={{
+                  fontWeight: 600,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  maxWidth: '300px',
+                }}
+              >
+                {file.name}
+              </span>
+              <span style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', flexShrink: 0 }}>
+                · {(file.size / 1024).toFixed(1)} KB
+              </span>
+              <button
+                type="button"
+                onClick={() => setFile(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--color-text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 2,
+                  borderRadius: 4,
+                  flexShrink: 0,
+                  transition: 'color 0.2s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-muted)')}
+                title="Remove File"
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Text Area */}
         <textarea
+          ref={textareaRef}
           rows={1}
-          placeholder={
-            isListening
-              ? '🎤 நீங்கள் பேசுவது உடனுக்குடன் பதியப்படுகிறது... (பேசி முடித்ததும் தானாக அனுப்பப்படும்)'
-              : attachedDoc
-              ? `"${attachedDoc.fileName}" குறித்து கேள்வி கேட்கவும்... (Enter அழுத்தவும்)`
-              : 'இங்கே உங்கள் கேள்வியை தட்டச்சு செய்யவும்... (Enter அழுத்தவும்)'
-          }
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          className="tamil-text"
+          onChange={(e) => {
+            setInput(e.target.value);
+            e.target.style.height = 'auto';
+            e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+              if (textareaRef.current) {
+                textareaRef.current.style.height = '38px';
+              }
+            }
+          }}
+          placeholder={t('general.placeholder')}
+          className="chat-input tamil-text"
           style={{
             width: '100%',
             background: 'transparent',
             border: 'none',
             outline: 'none',
-            fontSize: '0.92rem',
+            fontSize: '1rem',
             color: 'var(--color-text-primary)',
             resize: 'none',
+            fontFamily: "'Noto Sans Tamil', 'Inter', sans-serif",
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
+            overflowY: 'auto',
+            height: '38px',
+            maxHeight: '120px',
+            lineHeight: 1.5,
             padding: '4px 0',
-            fontFamily: "'Noto Sans Tamil', sans-serif",
-            maxHeight: 120,
           }}
         />
 
-        {/* Bottom Actions inside Dock */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingTop: 10,
+            borderTop: '1px solid var(--color-surface-border)',
+          }}
+        >
+          {/* Left Actions: Document Upload + Voice Input */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* Hidden File Input */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileSelect}
-              accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.txt"
-              style={{ display: 'none' }}
-            />
-
-            {/* Attachment Button */}
+            {/* Document Upload Button */}
             <button
-              type="button"
-              className="btn btn-ghost"
               onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingDoc}
+              className="btn btn-ghost"
               style={{
-                fontSize: '0.78rem',
-                padding: '6px 10px',
+                padding: '6px 14px',
+                borderRadius: 10,
+                fontSize: '0.88rem',
+                color: 'var(--color-text-secondary)',
+                border: '1px solid var(--color-surface-border)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
-                borderRadius: 8,
-                background: attachedDoc ? 'rgba(26, 58, 92, 0.08)' : 'transparent',
               }}
-              title="ஆவணத்தை இணைக்கவும் (PDF, Word, Excel, Scan, Text)"
+              title="Upload Document (.pdf, .docx, .txt)"
             >
-              <Paperclip size={15} style={{ color: attachedDoc ? 'var(--color-tn-primary)' : 'var(--color-text-secondary)' }} />
-              <span className="tamil-text">
-                {uploadingDoc ? 'பதிவேற்றுகிறது...' : attachedDoc ? 'இணைக்கப்பட்டுள்ளது' : 'இணைப்பு'}
-              </span>
+              <Paperclip size={16} />
+              <span>{t('general.attachment')}</span>
             </button>
 
-            {/* Voice Input Button (STT) */}
+            {/* Voice Input Mic Button */}
             <button
-              type="button"
-              onClick={toggleVoiceInput}
-              className={`btn btn-ghost ${isListening ? 'voice-listening-btn' : ''}`}
+              onClick={toggleListening}
+              className="btn btn-ghost"
               style={{
-                fontSize: '0.78rem',
-                padding: '6px 12px',
+                padding: '6px 14px',
+                borderRadius: 10,
+                fontSize: '0.88rem',
+                color: isListening ? '#ef4444' : 'var(--color-text-secondary)',
+                background: isListening ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
-                borderRadius: 8,
-                background: isListening ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.08)',
-                color: isListening ? '#ef4444' : '#059669',
-                border: isListening ? '1px solid #ef4444' : '1px solid rgba(16, 185, 129, 0.2)',
-                transition: 'all 0.2s ease',
               }}
-              title={isListening ? 'குரல் பதிவை நிறுத்த கிளிக் செய்யவும்' : 'குரல் மூலம் உள்ளீடு செய்ய கிளிக் செய்யவும் (Speech-to-Text)'}
+              title={isListening ? 'Stop Listening' : t('general.voice_input')}
             >
-              {isListening ? <MicOff size={15} /> : <Mic size={15} />}
-              <span className="tamil-text">
-                {isListening ? 'கேட்கிறது...' : 'குரல் உள்ளீடு'}
-              </span>
+              {isListening ? <MicOff size={16} className="animate-pulse" /> : <Mic size={16} />}
+              <span>{t('general.voice_input')}</span>
             </button>
           </div>
 
-          {/* Send Button */}
+          {/* India Green Send Button */}
           <button
-            className="btn btn-primary"
-            onClick={() => handleSend(null, isListening)}
-            disabled={!input.trim() || loading}
+            onClick={() => handleSend()}
+            disabled={(!input.trim() && !file) || loading}
             style={{
-              padding: '6px 18px',
-              borderRadius: 8,
+              padding: '8px 20px',
+              borderRadius: 10,
+              background: !input.trim() || loading
+                ? 'var(--color-surface-hover)'
+                : 'linear-gradient(135deg, #138808 0%, #0b6623 100%)',
+              color: !input.trim() || loading ? 'var(--color-text-muted)' : 'white',
+              border: 'none',
+              cursor: !input.trim() || loading ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
+              gap: 8,
+              fontSize: '1rem',
+              fontWeight: 600,
+              boxShadow: !input.trim() || loading ? 'none' : '0 4px 12px rgba(13, 136, 8, 0.35)',
+              transition: 'all 0.2s ease',
             }}
           >
-            <span className="tamil-text" style={{ fontSize: '0.82rem', fontWeight: 600 }}>அனுப்பு</span>
-            <Send size={14} />
+            {loading ? (
+              <RefreshCw size={16} className="animate-spin text-white" />
+            ) : (
+              <>
+                <span style={{ fontSize: '1rem' }}>{t('general.send')}</span>
+                <Send size={15} />
+              </>
+            )}
           </button>
         </div>
       </div>
