@@ -124,6 +124,36 @@ async def get_dataset_schema(dataset_id: str):
     return ds
 
 
+@router.get("/datasets/{dataset_id}/data")
+async def get_dataset_rows(dataset_id: str, limit: int = Query(200, ge=1, le=1000)):
+    """Retrieve tabular rows of a dataset for frontend table and charting."""
+    ds = get_dataset(dataset_id)
+    if not ds:
+        raise HTTPException(status_code=404, detail=TAMIL_ERROR_MESSAGES["DATASET_NOT_FOUND"])
+
+    try:
+        df = load_dataset_dataframe(ds["file_path"], sheet_name=ds.get("sheet_name", "Sheet1"))
+        records = df.head(limit).to_dict(orient="records")
+        # Clean NaN/Infinity for JSON serialization
+        cleaned = []
+        for r in records:
+            cleaned_row = {}
+            for k, v in r.items():
+                if isinstance(v, float) and (v != v or v == float("inf") or v == float("-inf")):
+                    cleaned_row[k] = None
+                else:
+                    cleaned_row[k] = v
+            cleaned.append(cleaned_row)
+        return {
+            "dataset_id": dataset_id,
+            "total_rows": len(df),
+            "columns": list(df.columns),
+            "rows": cleaned,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read dataset data: {e}")
+
+
 @router.delete("/datasets/{dataset_id}")
 async def remove_dataset(dataset_id: str, officer_id: str = Query("OFFICER")):
     """Delete a dataset and log audit trail."""

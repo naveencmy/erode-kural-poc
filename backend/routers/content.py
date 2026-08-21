@@ -15,6 +15,7 @@ router = APIRouter(tags=["Content & Chat"])
 class ChatRequest(BaseModel):
     message: str
     officer_id: str
+    source_id: Optional[str] = None
     context: Optional[str] = None
 
 
@@ -24,20 +25,31 @@ class ContentGenerateRequest(BaseModel):
     officer_id: str
 
 
+from pipeline.rag_engine import CollectorateRAGEngine
+
+rag_engine = CollectorateRAGEngine()
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 @router.post("/api/chat")
 async def chat(req: ChatRequest):
-    """General assistant chat — stub, ready for Ollama connection."""
+    """General assistant chat backed by Collectorate RAG and Ollama LLM."""
+    result = rag_engine.query(
+        message=req.message,
+        officer_id=req.officer_id,
+        source_id=req.source_id,
+        context=req.context,
+    )
     return {
         "message_id": f"msg_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        "sources": result.get("sources", []),
+        "engine": result.get("engine", "RAG"),
         "blocks": [
             {
                 "type": "text",
-                "content": f"வணக்கம்! உங்கள் செய்தி பெறப்பட்டது: \"{req.message}\". "
-                           "தற்போது மொத்த பணிப்பாய்வு (Bulk Workflow) தொகுதி முழுமையாக இயங்குகிறது. "
-                           "மற்ற தொகுதிகள் இணைக்கப்பட்டு வருகின்றன.",
+                "content": result.get("answer", "தகவல் செயலாக்க முடியவில்லை."),
             },
         ],
     }

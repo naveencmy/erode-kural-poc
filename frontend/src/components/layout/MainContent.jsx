@@ -27,7 +27,7 @@ export default function MainContent() {
     case 'settings':
       return <SettingsModule />;
     default:
-      return <BulkModule />;
+      return <GeneralModule />;
   }
 }
 

@@ -52,7 +52,20 @@ export default function Sidebar() {
           minHeight: 80,
         }}
       >
-        <TnEmblem size={sidebarCollapsed ? 36 : 42} className="text-[#c8a951] flex-shrink-0" />
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: '50%',
+            padding: '3px',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <TnEmblem size={sidebarCollapsed ? 30 : 36} />
+        </div>
         {!sidebarCollapsed && (
           <div style={{ overflow: 'hidden' }}>
             <div

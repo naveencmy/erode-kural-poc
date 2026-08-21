@@ -85,11 +85,24 @@ export const ingestFile = (file) => {
 // ─── Audit ───────────────────────────────────────────
 export const fetchAuditLog = (limit = 100) => apiCall(`/audit?limit=${limit}`);
 
-// ─── Chat (stub) ─────────────────────────────────────
-export const sendChat = (message, officerId) =>
+// ─── Document Upload & Analysis (Module 1) ───────────
+export const uploadDocument = (file, officerId = 'OFFICER') => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('officer_id', officerId);
+  return apiCall('/v1/document/upload', { method: 'POST', body: formData });
+};
+
+// ─── Chat & Assistant ────────────────────────────────
+export const sendChat = (message, officerId, sourceId = null, context = null) =>
   apiCall('/chat', {
     method: 'POST',
-    body: JSON.stringify({ message, officer_id: officerId }),
+    body: JSON.stringify({
+      message,
+      officer_id: officerId,
+      source_id: sourceId,
+      context,
+    }),
   });
 
 // ─── Module 2: Data & Visualization ─────────────────
@@ -142,6 +155,25 @@ export const createCustomChart = (datasetId, chartType, xCol, yCol, titleTamil, 
       title_tamil: titleTamil,
       officer_id: officerId,
     }),
+  });
+
+export const fetchDatasetData = (datasetId, limit = 200) =>
+  apiCall(`/v2/data/datasets/${datasetId}/data?limit=${limit}`);
+
+export const fetchDynamicSuggestions = (sourceId, moduleContext = 'data_viz', officerId = 'OFFICER') =>
+  apiCall('/v1/suggestions/generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      source_id: sourceId,
+      module_context: moduleContext,
+      officer_id: officerId,
+    }),
+  });
+
+export const trackSuggestionClick = (suggestionId) =>
+  apiCall(`/v1/suggestions/${suggestionId}/click`, {
+    method: 'POST',
+    body: JSON.stringify({ clicked: true }),
   });
 
 export const deleteDatasetApi = (datasetId, officerId = 'OFFICER') =>

@@ -204,6 +204,56 @@ def init_db(db_path: Optional[Path] = None) -> None:
             sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        -- Module 1: Document Summarization + Dynamic Prompt Suggestions Tables
+        CREATE TABLE IF NOT EXISTS document_summaries (
+            summary_id TEXT PRIMARY KEY,
+            source_id TEXT REFERENCES sources(source_id),
+            officer_id TEXT NOT NULL,
+            summary_type TEXT CHECK(summary_type IN ('executive', 'department', 'policy', 'action_points')),
+            summary_text_tamil TEXT NOT NULL,
+            summary_text_english TEXT,
+            key_figures TEXT,           -- JSON array
+            department_allocations TEXT, -- JSON array
+            policy_announcements TEXT,   -- JSON array
+            action_points TEXT,          -- JSON array
+            hallucination_score REAL,
+            grounding_map TEXT,          -- JSON: {claim_index: {chunk_id, page, confidence}}
+            generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            officer_approved BOOLEAN DEFAULT 0,
+            approved_by TEXT,
+            approved_at TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS prompt_suggestions (
+            suggestion_id TEXT PRIMARY KEY,
+            source_id TEXT REFERENCES sources(source_id),
+            officer_id TEXT NOT NULL,
+            module_context TEXT NOT NULL,
+            suggestion_text_tamil TEXT NOT NULL,
+            suggestion_text_english TEXT,
+            grounding_fingerprint TEXT NOT NULL,
+            generation_prompt TEXT,
+            raw_ai_response TEXT,
+            verified_against_fingerprint BOOLEAN DEFAULT 0,
+            verification_notes TEXT,
+            is_shown BOOLEAN DEFAULT 0,
+            is_clicked BOOLEAN DEFAULT 0,
+            clicked_at TIMESTAMP,
+            relevance_score REAL,
+            final_rank INTEGER,
+            generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS content_fingerprints (
+            fingerprint_id TEXT PRIMARY KEY,
+            source_id TEXT REFERENCES sources(source_id),
+            fingerprint_json TEXT NOT NULL,
+            file_type TEXT,
+            content_type TEXT,
+            entity_summary TEXT,
+            generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         INSERT OR IGNORE INTO imap_cursor (id, last_uid, updated_at)
         VALUES (1, 0, CURRENT_TIMESTAMP);
         """)
@@ -212,6 +262,12 @@ def init_db(db_path: Optional[Path] = None) -> None:
         # Safe Column Migrations for existing databases
         cur = conn.cursor()
         
+        # Check sources columns
+        cur.execute("PRAGMA table_info(sources)")
+        sources_cols = {row["name"] for row in cur.fetchall()}
+        if "content_fingerprint" not in sources_cols:
+            cur.execute("ALTER TABLE sources ADD COLUMN content_fingerprint TEXT")
+
         # Check ocr_results columns
         cur.execute("PRAGMA table_info(ocr_results)")
         ocr_cols = {row["name"] for row in cur.fetchall()}
@@ -1033,5 +1089,340 @@ def list_sent_emails(limit: int = 50, db_path: Optional[Path] = None) -> List[Di
         return [dict(r) for r in cursor.fetchall()]
     finally:
         conn.close()
+
+
+# ─── Module 1: Content Fingerprint & Suggestions Persistence ─────────────────
+
+def save_content_fingerprint(
+    source_id: str,
+    fingerprint: Dict[str, Any],
+    file_type: str = "unknown",
+    content_type: str = "general",
+    db_path: Optional[Path] = None,
+) -> str:
+    """Save content fingerprint in sources and content_fingerprints cache."""
+    import hashlib
+    fp_json = json.dumps(fingerprint, ensure_ascii=False)
+    fp_id = hashlib.sha256(fp_json.encode("utf-8")).hexdigest()[:16]
+    
+    # Entity summary string
+    entities = fingerprint.get("entities_found", {})
+    summary_parts = []
+    for k, v in entities.items():
+        if isinstance(v, list) and v:
+            summary_parts.append(f"{k}:{len(v)}")
+    entity_summary = ", ".join(summary_parts) if summary_parts else "none"
+
+    conn = get_db_connection(db_path)
+    try:
+        with conn:
+            # Update source table
+            conn.execute(
+                "UPDATE sources SET content_fingerprint = ? WHERE source_id = ?",
+                (fp_json, source_id),
+            )
+            # Insert or replace fingerprint cache
+            conn.execute(
+                """
+                INSERT INTO content_fingerprints (
+                    fingerprint_id, source_id, fingerprint_json, file_type, content_type, entity_summary
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(fingerprint_id) DO UPDATE SET
+                    fingerprint_json = excluded.fingerprint_json,
+                    entity_summary = excluded.entity_summary
+                """,
+                (fp_id, source_id, fp_json, file_type, content_type, entity_summary),
+            )
+        return fp_id
+    finally:
+        conn.close()
+
+
+def get_content_fingerprint(source_id: str, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """Retrieve content fingerprint for a given source_id."""
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT content_fingerprint FROM sources WHERE source_id = ?", (source_id,))
+        row = cursor.fetchone()
+        if row and row["content_fingerprint"]:
+            try:
+                return json.loads(row["content_fingerprint"])
+            except Exception:
+                pass
+        
+        # Fallback check in content_fingerprints
+        cursor.execute("SELECT fingerprint_json FROM content_fingerprints WHERE source_id = ? ORDER BY generated_at DESC LIMIT 1", (source_id,))
+        row2 = cursor.fetchone()
+        if row2 and row2["fingerprint_json"]:
+            try:
+                return json.loads(row2["fingerprint_json"])
+            except Exception:
+                pass
+        return None
+    finally:
+        conn.close()
+
+
+def save_prompt_suggestions(
+    suggestions: List[Dict[str, Any]],
+    source_id: str,
+    officer_id: str,
+    module_context: str,
+    grounding_fingerprint: Dict[str, Any],
+    generation_prompt: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> List[str]:
+    """Persist generated prompt suggestions for click tracking and personalization."""
+    import uuid
+    conn = get_db_connection(db_path)
+    saved_ids = []
+    grounding_json = json.dumps(grounding_fingerprint, ensure_ascii=False)
+
+    try:
+        with conn:
+            for rank, sug in enumerate(suggestions, start=1):
+                sug_id = sug.get("suggestion_id") or f"sg_{uuid.uuid4().hex[:10]}"
+                sug["suggestion_id"] = sug_id
+                saved_ids.append(sug_id)
+
+                conn.execute(
+                    """
+                    INSERT INTO prompt_suggestions (
+                        suggestion_id, source_id, officer_id, module_context,
+                        suggestion_text_tamil, suggestion_text_english,
+                        grounding_fingerprint, generation_prompt, raw_ai_response,
+                        verified_against_fingerprint, verification_notes,
+                        is_shown, relevance_score, final_rank
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                    """,
+                    (
+                        sug_id,
+                        source_id,
+                        officer_id,
+                        module_context,
+                        sug.get("text_tamil", ""),
+                        sug.get("text_english", ""),
+                        grounding_json,
+                        generation_prompt or "",
+                        json.dumps(sug, ensure_ascii=False),
+                        1 if sug.get("verified", False) else 0,
+                        sug.get("verification_notes", sug.get("grounded_in", "")),
+                        sug.get("personalized_score", sug.get("confidence", 0.8)),
+                        rank,
+                    ),
+                )
+        return saved_ids
+    finally:
+        conn.close()
+
+
+def get_prompt_suggestions(
+    source_id: Optional[str] = None,
+    module_context: Optional[str] = None,
+    officer_id: Optional[str] = None,
+    limit: int = 10,
+    db_path: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
+    """Fetch prompt suggestions filtered by source, module context, or officer."""
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        query = "SELECT * FROM prompt_suggestions WHERE 1=1"
+        params = []
+        if source_id:
+            query += " AND source_id = ?"
+            params.append(source_id)
+        if module_context:
+            query += " AND module_context = ?"
+            params.append(module_context)
+        if officer_id:
+            query += " AND officer_id = ?"
+            params.append(officer_id)
+        query += " ORDER BY generated_at DESC, final_rank ASC LIMIT ?"
+        params.append(limit)
+        cursor.execute(query, params)
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def record_suggestion_click(suggestion_id: str, db_path: Optional[Path] = None) -> bool:
+    """Record an officer click on a suggestion to update personalization CTR."""
+    conn = get_db_connection(db_path)
+    try:
+        with conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE prompt_suggestions
+                SET is_clicked = 1, clicked_at = CURRENT_TIMESTAMP
+                WHERE suggestion_id = ?
+                """,
+                (suggestion_id,),
+            )
+            return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_officer_suggestion_history(
+    officer_id: str,
+    module_context: Optional[str] = None,
+    limit: int = 100,
+    db_path: Optional[Path] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Retrieve historical CTR and interaction statistics for an officer."""
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        query = """
+            SELECT suggestion_text_tamil, is_clicked, relevance_score
+            FROM prompt_suggestions
+            WHERE officer_id = ?
+        """
+        params = [officer_id]
+        if module_context:
+            query += " AND module_context = ?"
+            params.append(module_context)
+        query += " ORDER BY generated_at DESC LIMIT ?"
+        params.append(limit)
+
+        cursor.execute(query, params)
+        history: Dict[str, Dict[str, Any]] = {}
+        for row in cursor.fetchall():
+            text = row["suggestion_text_tamil"]
+            if text not in history:
+                history[text] = {"shown": 0, "clicked": 0, "avg_score": 0.5}
+            history[text]["shown"] += 1
+            if row["is_clicked"]:
+                history[text]["clicked"] += 1
+            history[text]["avg_score"] = max(history[text]["avg_score"], row["relevance_score"] or 0)
+        return history
+    finally:
+        conn.close()
+
+
+# ─── Module 1: Document Summaries Persistence ───────────────────────────────
+
+def save_document_summary(
+    summary_id: str,
+    source_id: str,
+    officer_id: str,
+    summary_type: str,
+    summary_text_tamil: str,
+    summary_text_english: Optional[str] = None,
+    key_figures: Optional[List[Dict[str, Any]]] = None,
+    department_allocations: Optional[List[Dict[str, Any]]] = None,
+    policy_announcements: Optional[List[Dict[str, Any]]] = None,
+    action_points: Optional[List[Dict[str, Any]]] = None,
+    hallucination_score: float = 0.0,
+    grounding_map: Optional[Dict[str, Any]] = None,
+    db_path: Optional[Path] = None,
+) -> None:
+    """Save structured summary output with citations and grounding map."""
+    conn = get_db_connection(db_path)
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO document_summaries (
+                    summary_id, source_id, officer_id, summary_type,
+                    summary_text_tamil, summary_text_english,
+                    key_figures, department_allocations, policy_announcements,
+                    action_points, hallucination_score, grounding_map
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(summary_id) DO UPDATE SET
+                    summary_text_tamil = excluded.summary_text_tamil,
+                    summary_text_english = excluded.summary_text_english,
+                    key_figures = excluded.key_figures,
+                    department_allocations = excluded.department_allocations,
+                    policy_announcements = excluded.policy_announcements,
+                    action_points = excluded.action_points,
+                    hallucination_score = excluded.hallucination_score,
+                    grounding_map = excluded.grounding_map
+                """,
+                (
+                    summary_id,
+                    source_id,
+                    officer_id,
+                    summary_type,
+                    summary_text_tamil,
+                    summary_text_english,
+                    json.dumps(key_figures or [], ensure_ascii=False),
+                    json.dumps(department_allocations or [], ensure_ascii=False),
+                    json.dumps(policy_announcements or [], ensure_ascii=False),
+                    json.dumps(action_points or [], ensure_ascii=False),
+                    hallucination_score,
+                    json.dumps(grounding_map or {}, ensure_ascii=False),
+                ),
+            )
+    finally:
+        conn.close()
+
+
+def get_document_summary(summary_id: str, db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """Fetch single document summary by summary_id."""
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM document_summaries WHERE summary_id = ?", (summary_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        res = dict(row)
+        for json_col in ("key_figures", "department_allocations", "policy_announcements", "action_points", "grounding_map"):
+            if res.get(json_col):
+                try:
+                    res[json_col] = json.loads(res[json_col])
+                except Exception:
+                    pass
+        return res
+    finally:
+        conn.close()
+
+
+def list_document_summaries(source_id: str, db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Fetch all generated summaries for a source_id."""
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM document_summaries WHERE source_id = ? ORDER BY generated_at DESC",
+            (source_id,),
+        )
+        summaries = []
+        for row in cursor.fetchall():
+            res = dict(row)
+            for json_col in ("key_figures", "department_allocations", "policy_announcements", "action_points", "grounding_map"):
+                if res.get(json_col):
+                    try:
+                        res[json_col] = json.loads(res[json_col])
+                    except Exception:
+                        pass
+            summaries.append(res)
+        return summaries
+    finally:
+        conn.close()
+
+
+def approve_document_summary(summary_id: str, officer_id: str, db_path: Optional[Path] = None) -> bool:
+    """Approve a document summary for official filing."""
+    conn = get_db_connection(db_path)
+    try:
+        with conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE document_summaries
+                SET officer_approved = 1, approved_by = ?, approved_at = CURRENT_TIMESTAMP
+                WHERE summary_id = ?
+                """,
+                (officer_id, summary_id),
+            )
+            return cursor.rowcount > 0
+    finally:
+        conn.close()
+
 
 
