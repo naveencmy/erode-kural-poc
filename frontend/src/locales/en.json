@@ -1,5 +1,6 @@
 {
-  "app_title": "Erode District Collectorate Office",
+  "app_title": "Erode District\nCollectorate Office",
+  "app_subtitle": "AI Administrative Copilot",
   "sidebar": {
     "general": "General Assistant",
     "document": "Document Summary",

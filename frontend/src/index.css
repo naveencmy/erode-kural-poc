@@ -39,7 +39,7 @@
   /* --- Spacing --- */
   --spacing-sidebar: 280px;
   --spacing-sidebar-collapsed: 72px;
-  --spacing-topbar: 64px;
+  --spacing-topbar: 72px;
   --spacing-inspector: 400px;
 
   /* --- Elder-Friendly Government Web Application Sizing Standard --- */
@@ -223,8 +223,9 @@ body,
 
 .content-area {
   flex: 1;
-  padding: 16px 24px;
-  overflow: hidden;
+  padding: 10px 24px 14px 24px;
+  overflow-y: auto;
+  overflow-x: hidden;
   max-width: 1680px;
   width: 100%;
   margin: 0 auto;

@@ -39,7 +39,6 @@ export default function AuditModule() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedYear, setSelectedYear] = useState('all');
   const [selectedMonth, setSelectedMonth] = useState('all');
-  const [selectedDay, setSelectedDay] = useState('all');
   const [selectedDate, setSelectedDate] = useState('');
 
   const loadAudit = async () => {
@@ -79,15 +78,14 @@ export default function AuditModule() {
     return { id: 'bulk', label: t('audit.cat_bulk'), icon: FileCheck, color: '#047857', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)' };
   };
 
-  // Synchronize date input change with Y-M-D dropdowns
+  // Synchronize date input change with Y-M dropdowns
   const handleDateInputChange = (e) => {
     const val = e.target.value; // "YYYY-MM-DD"
     setSelectedDate(val);
     if (val) {
-      const [y, m, d] = val.split('-');
+      const [y, m] = val.split('-');
       setSelectedYear(y);
       setSelectedMonth(m);
-      setSelectedDay(String(parseInt(d, 10)));
     }
   };
 
@@ -95,11 +93,10 @@ export default function AuditModule() {
     setSelectedCategory('all');
     setSelectedYear('all');
     setSelectedMonth('all');
-    setSelectedDay('all');
     setSelectedDate('');
   };
 
-  // Available Years, Months, Days derived dynamically
+  // Available Years & Months derived dynamically
   const yearsList = useMemo(() => ['2026', '2025', '2024'], []);
   const monthsList = useMemo(() => [
     { value: '01', label: '01 - Jan' },
@@ -115,7 +112,6 @@ export default function AuditModule() {
     { value: '11', label: '11 - Nov' },
     { value: '12', label: '12 - Dec' },
   ], []);
-  const daysList = useMemo(() => Array.from({ length: 31 }, (_, i) => String(i + 1)), []);
 
   // Filtered audit entries
   const filteredEntries = useMemo(() => {
@@ -143,15 +139,12 @@ export default function AuditModule() {
       if (selectedMonth !== 'all' && entMonth !== selectedMonth) {
         return false;
       }
-      if (selectedDay !== 'all' && entDay !== selectedDay) {
-        return false;
-      }
 
       return true;
     });
-  }, [entries, selectedCategory, selectedYear, selectedMonth, selectedDay, selectedDate]);
+  }, [entries, selectedCategory, selectedYear, selectedMonth, selectedDate]);
 
-  const hasActiveFilters = selectedCategory !== 'all' || selectedYear !== 'all' || selectedMonth !== 'all' || selectedDay !== 'all' || selectedDate !== '';
+  const hasActiveFilters = selectedCategory !== 'all' || selectedYear !== 'all' || selectedMonth !== 'all' || selectedDate !== '';
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -159,7 +152,7 @@ export default function AuditModule() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <h1 className="module-title tamil-text" style={{ fontSize: '1.05rem', fontWeight: 700 }}>{t('audit.title')}</h1>
-          <p style={{ fontSize: '0.95rem', color: 'var(--color-text-secondary)', marginTop: 4 }} className="tamil-text">
+          <p style={{ fontSize: '0.92rem', color: 'var(--color-text-secondary)', marginTop: 2 }} className="tamil-text">
             {t('audit.desc')}
           </p>
         </div>
@@ -175,7 +168,7 @@ export default function AuditModule() {
           padding: '12px 16px',
           background: 'var(--color-surface-card)',
           border: '1px solid var(--color-surface-border)',
-          borderRadius: 14,
+          borderRadius: 12,
           display: 'flex',
           flexDirection: 'column',
           gap: 10,
@@ -184,7 +177,7 @@ export default function AuditModule() {
       >
         {/* Category Pills */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.95rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
             <Layers size={14} style={{ color: 'var(--color-tn-primary)' }} />
             <span className="tamil-text">{t('audit.filter_category')}</span>
           </div>
@@ -208,18 +201,18 @@ export default function AuditModule() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: 6,
-                    padding: '6px 14px',
+                    padding: '5px 12px',
                     borderRadius: 20,
-                    fontSize: '0.88rem',
+                    fontSize: '0.84rem',
                     fontWeight: active ? 600 : 500,
                     border: active ? '1px solid var(--color-tn-primary)' : '1px solid var(--color-surface-border)',
                     background: active ? 'var(--color-tn-primary)' : 'var(--color-surface-bg)',
                     color: active ? '#ffffff' : 'var(--color-text-primary)',
                     cursor: 'pointer',
-                    transition: 'all 0.2s ease',
+                    transition: 'all 0.15s ease',
                   }}
                 >
-                  <IconComp size={14} />
+                  <IconComp size={13} />
                   <span>{cat.label}</span>
                 </button>
               );
@@ -227,9 +220,9 @@ export default function AuditModule() {
           </div>
         </div>
 
-        {/* Date / Month / Year Controls */}
+        {/* Date / Month / Year Controls (Removed All Days filter) */}
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, paddingTop: 10, borderTop: '1px solid var(--color-surface-border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.95rem', fontWeight: 600, color: 'var(--color-text-secondary)', marginRight: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text-secondary)', marginRight: 4 }}>
             <Calendar size={14} style={{ color: 'var(--color-tn-primary)' }} />
             <span className="tamil-text">{t('audit.filter_date')}:</span>
           </div>
@@ -241,12 +234,12 @@ export default function AuditModule() {
               value={selectedDate}
               onChange={handleDateInputChange}
               style={{
-                padding: '6px 12px',
+                padding: '5px 10px',
                 borderRadius: 8,
                 border: '1px solid var(--color-surface-border)',
                 background: 'var(--color-surface-bg)',
                 color: 'var(--color-text-primary)',
-                fontSize: '1rem',
+                fontSize: '0.88rem',
                 outline: 'none',
               }}
             />
@@ -257,19 +250,19 @@ export default function AuditModule() {
             value={selectedYear}
             onChange={(e) => { setSelectedYear(e.target.value); setSelectedDate(''); }}
             style={{
-              padding: '6px 12px',
+              padding: '5px 10px',
               borderRadius: 8,
               border: '1px solid var(--color-surface-border)',
               background: 'var(--color-surface-bg)',
-              color: '#000000',
-              fontSize: '1rem',
+              color: 'var(--color-text-primary)',
+              fontSize: '0.88rem',
               outline: 'none',
               cursor: 'pointer',
             }}
           >
-            <option value="all" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{t('audit.all_years')}</option>
+            <option value="all">{t('audit.all_years')}</option>
             {yearsList.map((y) => (
-              <option key={y} value={y} style={{ color: '#000000', backgroundColor: '#ffffff' }}>{y}</option>
+              <option key={y} value={y}>{y}</option>
             ))}
           </select>
 
@@ -278,40 +271,19 @@ export default function AuditModule() {
             value={selectedMonth}
             onChange={(e) => { setSelectedMonth(e.target.value); setSelectedDate(''); }}
             style={{
-              padding: '6px 12px',
+              padding: '5px 10px',
               borderRadius: 8,
               border: '1px solid var(--color-surface-border)',
               background: 'var(--color-surface-bg)',
-              color: '#000000',
-              fontSize: '1rem',
+              color: 'var(--color-text-primary)',
+              fontSize: '0.88rem',
               outline: 'none',
               cursor: 'pointer',
             }}
           >
-            <option value="all" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{t('audit.all_months')}</option>
+            <option value="all">{t('audit.all_months')}</option>
             {monthsList.map((m) => (
-              <option key={m.value} value={m.value} style={{ color: '#000000', backgroundColor: '#ffffff' }}>{m.label}</option>
-            ))}
-          </select>
-
-          {/* Day Dropdown */}
-          <select
-            value={selectedDay}
-            onChange={(e) => { setSelectedDay(e.target.value); setSelectedDate(''); }}
-            style={{
-              padding: '6px 12px',
-              borderRadius: 8,
-              border: '1px solid var(--color-surface-border)',
-              background: 'var(--color-surface-bg)',
-              color: '#000000',
-              fontSize: '1rem',
-              outline: 'none',
-              cursor: 'pointer',
-            }}
-          >
-            <option value="all" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{t('audit.all_days')}</option>
-            {daysList.map((d) => (
-              <option key={d} value={d} style={{ color: '#000000', backgroundColor: '#ffffff' }}>{t('audit.day')} {d}</option>
+              <option key={m.value} value={m.value}>{m.label}</option>
             ))}
           </select>
 
@@ -325,9 +297,9 @@ export default function AuditModule() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 5,
-                padding: '6px 12px',
+                padding: '5px 10px',
                 borderRadius: 8,
-                fontSize: '0.88rem',
+                fontSize: '0.82rem',
                 color: '#ef4444',
                 background: 'rgba(239, 68, 68, 0.08)',
                 border: '1px solid rgba(239, 68, 68, 0.2)',
@@ -335,20 +307,21 @@ export default function AuditModule() {
                 marginLeft: 'auto',
               }}
             >
-              <RotateCcw size={14} />
+              <RotateCcw size={13} />
               <span>{t('audit.reset_filters')}</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Results Count & Table View */}
+      {/* Results Count */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px' }}>
-        <span style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', fontWeight: 500 }} className="tamil-text">
+        <span style={{ fontSize: '0.86rem', color: 'var(--color-text-muted)', fontWeight: 500 }} className="tamil-text">
           {t('audit.showing_results', { count: filteredEntries.length })}
         </span>
       </div>
 
+      {/* Smooth Scrollable Audit Table */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
           <div className="spinner" />
@@ -359,16 +332,27 @@ export default function AuditModule() {
           <div className="empty-title tamil-text" style={{ fontSize: '1.05rem' }}>{t('audit.empty')}</div>
         </div>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="data-table">
+        <div
+          className="card"
+          style={{
+            padding: 0,
+            overflowX: 'auto',
+            overflowY: 'auto',
+            maxHeight: 'calc(100vh - 240px)',
+            borderRadius: 12,
+            border: '1px solid var(--color-surface-border)',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.04)',
+          }}
+        >
+          <table className="data-table" style={{ width: '100%', minWidth: 860, borderCollapse: 'collapse' }}>
             <thead>
-              <tr>
-                <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('audit.date_time')}</th>
-                <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('audit.category')}</th>
-                <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('audit.action')}</th>
-                <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('audit.officer')}</th>
-                <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('audit.source_id')}</th>
-                <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('audit.details')}</th>
+              <tr style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--color-surface-card)' }}>
+                <th className="tamil-text" style={{ fontSize: '0.88rem', padding: '12px 16px', background: 'var(--color-surface-card)', borderBottom: '1.5px solid var(--color-surface-border)' }}>{t('audit.date_time')}</th>
+                <th className="tamil-text" style={{ fontSize: '0.88rem', padding: '12px 16px', background: 'var(--color-surface-card)', borderBottom: '1.5px solid var(--color-surface-border)' }}>{t('audit.category')}</th>
+                <th className="tamil-text" style={{ fontSize: '0.88rem', padding: '12px 16px', background: 'var(--color-surface-card)', borderBottom: '1.5px solid var(--color-surface-border)' }}>{t('audit.action')}</th>
+                <th className="tamil-text" style={{ fontSize: '0.88rem', padding: '12px 16px', background: 'var(--color-surface-card)', borderBottom: '1.5px solid var(--color-surface-border)' }}>{t('audit.officer')}</th>
+                <th className="tamil-text" style={{ fontSize: '0.88rem', padding: '12px 16px', background: 'var(--color-surface-card)', borderBottom: '1.5px solid var(--color-surface-border)' }}>{t('audit.source_id')}</th>
+                <th className="tamil-text" style={{ fontSize: '0.88rem', padding: '12px 16px', background: 'var(--color-surface-card)', borderBottom: '1.5px solid var(--color-surface-border)' }}>{t('audit.details')}</th>
               </tr>
             </thead>
             <tbody>
@@ -376,11 +360,11 @@ export default function AuditModule() {
                 const catMeta = getCategoryMeta(ent);
                 const CatIcon = catMeta.icon;
                 return (
-                  <tr key={ent.id}>
-                    <td style={{ fontSize: '1rem', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
+                  <tr key={ent.id} style={{ borderBottom: '1px solid var(--color-surface-border)' }}>
+                    <td style={{ fontSize: '0.86rem', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', padding: '10px 16px' }}>
                       {formatDate(ent.timestamp, i18n.language)}
                     </td>
-                    <td>
+                    <td style={{ padding: '10px 16px' }}>
                       <span
                         className="tamil-text"
                         style={{
@@ -389,7 +373,7 @@ export default function AuditModule() {
                           gap: 5,
                           padding: '3px 10px',
                           borderRadius: 12,
-                          fontSize: '0.88rem',
+                          fontSize: '0.82rem',
                           fontWeight: 600,
                           background: catMeta.bg,
                           color: catMeta.color,
@@ -401,26 +385,27 @@ export default function AuditModule() {
                         <span>{catMeta.label}</span>
                       </span>
                     </td>
-                    <td>
+                    <td style={{ padding: '10px 16px' }}>
                       <span
                         style={{
                           padding: '2px 8px',
                           borderRadius: 4,
-                          fontSize: '0.88rem',
+                          fontSize: '0.8rem',
                           fontWeight: 700,
                           background: ent.action.includes('APPROVE') ? '#d1fae5' : 'var(--color-surface-bg)',
                           color: ent.action.includes('APPROVE') ? '#065f46' : 'var(--color-text-primary)',
                           border: '1px solid var(--color-surface-border)',
+                          whiteSpace: 'nowrap',
                         }}
                       >
                         {ent.action}
                       </span>
                     </td>
-                    <td style={{ fontWeight: 600, fontSize: '1rem' }}>{ent.officer_id || 'SYSTEM'}</td>
-                    <td style={{ fontSize: '1rem', color: 'var(--color-text-muted)' }}>
-                      {ent.source_id ? `${ent.source_id.slice(0, 12)}${ent.source_id.length > 12 ? '…' : ''}` : '—'}
+                    <td style={{ fontWeight: 600, fontSize: '0.88rem', padding: '10px 16px', whiteSpace: 'nowrap' }}>{ent.officer_id || 'SYSTEM'}</td>
+                    <td style={{ fontSize: '0.84rem', color: 'var(--color-text-muted)', padding: '10px 16px', whiteSpace: 'nowrap' }}>
+                      {ent.source_id ? `${ent.source_id.slice(0, 14)}${ent.source_id.length > 14 ? '…' : ''}` : '—'}
                     </td>
-                    <td className="tamil-text" style={{ fontSize: '1rem', color: 'var(--color-text-secondary)' }}>
+                    <td className="tamil-text" style={{ fontSize: '0.86rem', color: 'var(--color-text-secondary)', padding: '10px 16px', minWidth: 260, maxWidth: 450, wordBreak: 'break-word' }}>
                       {ent.details}
                     </td>
                   </tr>

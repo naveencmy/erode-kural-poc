@@ -23,42 +23,64 @@ TN_NAVY = RGBColor(0x1A, 0x3A, 0x5C)
 TN_GOLD = RGBColor(0xC8, 0xA9, 0x51)
 
 
-def _extract_clean_body_paragraphs(body_text: str) -> List[str]:
-    """Extract clean body paragraphs without accidentally stripping genuine content."""
+def _extract_clean_body_paragraphs_and_footer(body_text: str, default_footer: str = "வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்.") -> Tuple[List[str], str]:
+    """Extract clean body paragraphs and separate/deduplicate issuing footer line."""
     if not body_text:
-        return []
+        return [], default_footer
 
     paragraphs = [p.strip() for p in body_text.split("\n\n") if p.strip()]
     cleaned = []
+    detected_footer = None
 
     for p in paragraphs:
-        # Check if the block is ONLY a short header/footer banner line
-        is_short = len(p) < 110
+        lines = [l.strip() for l in p.split("\n") if l.strip()]
+        kept_lines = []
+        for line in lines:
+            line_no_num = re.sub(r'^\d+[\.\)]\s*', '', line).strip()
+            is_short = len(line_no_num) < 140
 
-        if is_short and (
-            re.match(r"^செ\.வெ\.எண்\s*[-–:]", p) or
-            re.match(r"^சுற்றறிக்கை\s*எண்\s*[-–:]", p) or
-            re.match(r"^குறிப்பாணை\s*எண்\s*[-–:]", p) or
-            re.match(r"^எண்:\s*வே/", p) or
-            re.match(r"^நாள்\s*[-–:]", p) or
-            p in ["----", "---", "----------------", "<><><>"] or
-            p == "அவர்களின் செய்திக்குறிப்பு-" or
-            p == "அவர்களின் சுற்றறிக்கை-" or
-            p == "அவர்களின் அலுவலகக் குறிப்பாணை-" or
-            p == "ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.," or
-            p == "ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,\nஅவர்களின் செய்திக்குறிப்பு-" or
-            p == "ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,\nஅவர்களின் சுற்றறிக்கை-" or
-            p == "ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,\nஅவர்களின் அலுவலகக் குறிப்பாணை-" or
-            p.startswith("வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர்") or
-            p.startswith("வெளியீடு - செய்தி மக்கள் தொடர்பு அலுவலர்") or
-            p.startswith("--------------------------------") or
-            p.startswith("================================")
-        ):
-            continue
+            if is_short and (
+                re.match(r"^செ\.வெ\.எண்\s*[-–:]", line_no_num) or
+                re.match(r"^சுற்றறிக்கை\s*எண்\s*[-–:]", line_no_num) or
+                re.match(r"^குறிப்பாணை\s*எண்\s*[-–:]", line_no_num) or
+                re.match(r"^எண்:\s*வே/", line_no_num) or
+                re.match(r"^நாள்\s*[-–:]", line_no_num) or
+                line_no_num in ["----", "---", "----------------", "<><><>"] or
+                line_no_num == "அவர்களின் செய்திக்குறிப்பு-" or
+                line_no_num == "அவர்களின் சுற்றறிக்கை-" or
+                line_no_num == "அவர்களின் அலுவலகக் குறிப்பாணை-" or
+                line_no_num == "ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.," or
+                line_no_num.startswith("--------------------------------") or
+                line_no_num.startswith("================================")
+            ):
+                continue
 
-        cleaned.append(p)
+            if is_short and (
+                line_no_num.startswith("வெளியீடு") or
+                "செய்தி மக்கள் தொடர்பு அலுவலர்" in line_no_num or
+                line_no_num.startswith("இப்படிக்கு")
+            ):
+                detected_footer = line_no_num
+                continue
 
-    return cleaned
+            kept_lines.append(line)
+
+        if kept_lines:
+            cleaned.append("\n".join(kept_lines))
+
+    final_footer = default_footer
+    if detected_footer:
+        norm_det = re.sub(r'[\s\-_,.:;]', '', detected_footer)
+        norm_def = re.sub(r'[\s\-_,.:;]', '', default_footer)
+        if norm_det != norm_def:
+            final_footer = detected_footer
+
+    return cleaned, final_footer
+
+
+def _extract_clean_body_paragraphs(body_text: str) -> List[str]:
+    paras, _ = _extract_clean_body_paragraphs_and_footer(body_text)
+    return paras
 
 
 def _add_header(doc: Document, template_title: str, ref_number: str, date_str: str, officer_id: str):
@@ -177,9 +199,9 @@ def _export_press_release_docx(doc: Document, content_data: Dict[str, Any]):
     r_sep.font.bold = True
     r_sep.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
-    # Clean body paragraphs
+    # Clean body paragraphs and deduplicate footer
     body_text = content_data.get("content_body", "")
-    clean_paras = _extract_clean_body_paragraphs(body_text)
+    clean_paras, final_footer = _extract_clean_body_paragraphs_and_footer(body_text)
 
     for p_text in clean_paras:
         body_p = doc.add_paragraph()
@@ -196,7 +218,7 @@ def _export_press_release_docx(doc: Document, content_data: Dict[str, Any]):
     # DIPR Footer
     footer_p = doc.add_paragraph()
     footer_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    r_footer = footer_p.add_run("வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்.")
+    r_footer = footer_p.add_run(final_footer)
     r_footer.font.size = Pt(10.5)
     r_footer.font.bold = True
     r_footer.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
@@ -239,7 +261,7 @@ def _export_circular_docx(doc: Document, content_data: Dict[str, Any]):
     r_sep.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
     body_text = content_data.get("content_body", "")
-    clean_paras = _extract_clean_body_paragraphs(body_text)
+    clean_paras, final_footer = _extract_clean_body_paragraphs_and_footer(body_text)
 
     for p_text in clean_paras:
         body_p = doc.add_paragraph()
@@ -254,7 +276,7 @@ def _export_circular_docx(doc: Document, content_data: Dict[str, Any]):
 
     footer_p = doc.add_paragraph()
     footer_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    r_footer = footer_p.add_run("வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்.")
+    r_footer = footer_p.add_run(final_footer)
     r_footer.font.size = Pt(10.5)
     r_footer.font.bold = True
 
@@ -296,7 +318,7 @@ def _export_memo_docx(doc: Document, content_data: Dict[str, Any]):
     r_sep.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
     body_text = content_data.get("content_body", "")
-    clean_paras = _extract_clean_body_paragraphs(body_text)
+    clean_paras, final_footer = _extract_clean_body_paragraphs_and_footer(body_text)
 
     for p_text in clean_paras:
         body_p = doc.add_paragraph()
@@ -311,7 +333,7 @@ def _export_memo_docx(doc: Document, content_data: Dict[str, Any]):
 
     footer_p = doc.add_paragraph()
     footer_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    r_footer = footer_p.add_run("வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்.")
+    r_footer = footer_p.add_run(final_footer)
     r_footer.font.size = Pt(10.5)
     r_footer.font.bold = True
 

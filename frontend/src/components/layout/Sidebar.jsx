@@ -49,18 +49,18 @@ export default function Sidebar() {
           borderBottom: '2px solid var(--color-surface-border)',
           display: 'flex',
           alignItems: 'center',
-          gap: 10,
+          gap: 12,
           boxSizing: 'border-box',
           flexShrink: 0,
         }}
       >
-        <TnEmblem size={sidebarCollapsed ? 28 : 32} className="text-[#c8a951] flex-shrink-0" />
+        <TnEmblem size={sidebarCollapsed ? 34 : 44} className="text-[#c8a951] flex-shrink-0" />
         {!sidebarCollapsed && (
-          <div style={{ overflow: 'hidden', minWidth: 0, flex: 1 }}>
+          <div style={{ overflow: 'hidden', minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
             <div
               className="tamil-text"
               style={{
-                fontSize: '0.95rem',
+                fontSize: '0.8rem',
                 fontWeight: 700,
                 color: '#FFFFFF',
                 whiteSpace: 'pre-line',
@@ -68,6 +68,20 @@ export default function Sidebar() {
               }}
             >
               {t('app_title')}
+            </div>
+            <div
+              className="tamil-text"
+              style={{
+                fontSize: '0.63rem',
+                fontWeight: 600,
+                color: '#C8A951',
+                letterSpacing: '0.03em',
+                lineHeight: 1.2,
+                marginTop: 4,
+                opacity: 0.95,
+              }}
+            >
+              {t('app_subtitle')}
             </div>
           </div>
         )}
