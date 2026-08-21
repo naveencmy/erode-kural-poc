@@ -126,16 +126,29 @@ export default function ContentModule() {
     try {
       const filename = `${result.ref_number.replace(/\//g, '_')}_${result.template_type}.pdf`;
 
-      // Parse editedText into structured body paragraphs
+      // Parse editedText into structured body paragraphs safely
       const rawParas = editedText.split('\n\n').map(p => p.trim()).filter(Boolean);
       const cleanBodyParas = [];
 
       for (const p of rawParas) {
-        if (p.includes('செ.வெ.எண்') || p.includes('சுற்றறிக்கை எண்')) continue;
-        if (p.includes('மாவட்ட ஆட்சித்தலைவர்') && (p.includes('செய்திக்குறிப்பு') || p.includes('சுற்றறிக்கை'))) continue;
-        if (p === '----' || p === '---' || p.startsWith('----------------') || p.startsWith('========')) continue;
-        if (p.includes('செய்தி மக்கள் தொடர்பு அலுவலர்')) continue;
-        if (p.startsWith('பெறுநர்:') || p.startsWith('நகல்:')) continue;
+        const isShort = p.length < 110;
+        if (isShort && (
+          p.startsWith('செ.வெ.எண்') ||
+          p.startsWith('சுற்றறிக்கை எண்') ||
+          p.startsWith('குறிப்பாணை எண்') ||
+          p.startsWith('எண்:') ||
+          p.startsWith('நாள்') ||
+          p === '----' || p === '---' || p.startsWith('----------------') || p.startsWith('========') ||
+          p === 'அவர்களின் செய்திக்குறிப்பு-' ||
+          p === 'அவர்களின் சுற்றறிக்கை-' ||
+          p === 'அவர்களின் அலுவலகக் குறிப்பாணை-' ||
+          p === 'ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,' ||
+          p === 'ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,\nஅவர்களின் செய்திக்குறிப்பு-' ||
+          p.startsWith('வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர்') ||
+          p.startsWith('வெளியீடு - செய்தி மக்கள் தொடர்பு அலுவலர்')
+        )) {
+          continue;
+        }
         cleanBodyParas.push(p);
       }
 
@@ -160,17 +173,23 @@ export default function ContentModule() {
       container.style.boxSizing = 'border-box';
 
       if (result.template_type === 'meeting_minutes') {
-        const cleanBodyParas = rawParas.filter(p =>
-          !p.includes('கூட்ட நடவடிக்கைகள்') &&
-          !p.includes('முன்னிலை:') &&
-          !p.startsWith('எண்:') &&
-          !p.startsWith('பொருள்:') &&
-          !p.startsWith('பார்வை:') &&
-          p !== '<><><>' &&
-          !p.includes('ஓம்/-ச.கந்தசாமி') &&
-          !p.includes('நேர்முக உதவியாளர்') &&
-          !p.startsWith('----------------')
-        );
+        const cleanMinutesParas = rawParas.filter(p => {
+          const isShort = p.length < 110;
+          if (isShort && (
+            p.includes('கூட்ட நடவடிக்கைகள்') && p.includes('தலைமையில்') ||
+            p.includes('முன்னிலை:') ||
+            p.startsWith('எண்:') ||
+            p.startsWith('பொருள்:') ||
+            p.startsWith('பார்வை:') ||
+            p === '<><><>' ||
+            p.includes('ஓம்/-ச.கந்தசாமி') ||
+            p.includes('நேர்முக உதவியாளர்') ||
+            p.startsWith('----------------')
+          )) {
+            return false;
+          }
+          return true;
+        });
 
         container.innerHTML = `
           <div style="page-break-inside: avoid; break-inside: avoid;">
@@ -193,7 +212,7 @@ export default function ContentModule() {
           </div>
 
           <div style="color: #000000; font-size: 10.5pt; line-height: 1.75;">
-            ${cleanBodyParas.map(p => `
+            ${cleanMinutesParas.map(p => `
               <div style="page-break-inside: avoid; break-inside: avoid; margin-bottom: 14px; text-align: justify; text-justify: inter-word; color: #000000; font-size: 10.5pt; line-height: 1.75;">
                 ${p.replace(/\n/g, '<br/>')}
               </div>

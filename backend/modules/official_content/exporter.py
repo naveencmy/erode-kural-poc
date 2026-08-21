@@ -1,13 +1,14 @@
-"""DOCX Exporter for Official Content Documents.
+"""DOCX and PDF Exporter for Official Content Documents.
 
-Generates formatted Microsoft Word (.docx) files with
-Tamil Nadu Government styling for official document export.
+Generates formatted Microsoft Word (.docx) and PDF files with
+authentic Tamil Nadu Government styling for official document export.
 """
 
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -22,9 +23,46 @@ TN_NAVY = RGBColor(0x1A, 0x3A, 0x5C)
 TN_GOLD = RGBColor(0xC8, 0xA9, 0x51)
 
 
+def _extract_clean_body_paragraphs(body_text: str) -> List[str]:
+    """Extract clean body paragraphs without accidentally stripping genuine content."""
+    if not body_text:
+        return []
+
+    paragraphs = [p.strip() for p in body_text.split("\n\n") if p.strip()]
+    cleaned = []
+
+    for p in paragraphs:
+        # Check if the block is ONLY a short header/footer banner line
+        is_short = len(p) < 110
+
+        if is_short and (
+            re.match(r"^செ\.வெ\.எண்\s*[-–:]", p) or
+            re.match(r"^சுற்றறிக்கை\s*எண்\s*[-–:]", p) or
+            re.match(r"^குறிப்பாணை\s*எண்\s*[-–:]", p) or
+            re.match(r"^எண்:\s*வே/", p) or
+            re.match(r"^நாள்\s*[-–:]", p) or
+            p in ["----", "---", "----------------", "<><><>"] or
+            p == "அவர்களின் செய்திக்குறிப்பு-" or
+            p == "அவர்களின் சுற்றறிக்கை-" or
+            p == "அவர்களின் அலுவலகக் குறிப்பாணை-" or
+            p == "ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.," or
+            p == "ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,\nஅவர்களின் செய்திக்குறிப்பு-" or
+            p == "ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,\nஅவர்களின் சுற்றறிக்கை-" or
+            p == "ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,\nஅவர்களின் அலுவலகக் குறிப்பாணை-" or
+            p.startswith("வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர்") or
+            p.startswith("வெளியீடு - செய்தி மக்கள் தொடர்பு அலுவலர்") or
+            p.startswith("--------------------------------") or
+            p.startswith("================================")
+        ):
+            continue
+
+        cleaned.append(p)
+
+    return cleaned
+
+
 def _add_header(doc: Document, template_title: str, ref_number: str, date_str: str, officer_id: str):
     """Add government-styled header to the document."""
-    # Title block
     header_para = doc.add_paragraph()
     header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = header_para.add_run("தமிழ்நாடு அரசு — மாவட்ட ஆட்சியர் அலுவலகம்\n")
@@ -103,7 +141,7 @@ def _export_press_release_docx(doc: Document, content_data: Dict[str, Any]):
     header_table = doc.add_table(rows=1, cols=2)
     header_table.autofit = True
     row = header_table.rows[0]
-    
+
     # Left: செ.வெ.எண்
     p_left = row.cells[0].paragraphs[0]
     p_left.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -123,7 +161,7 @@ def _export_press_release_docx(doc: Document, content_data: Dict[str, Any]):
     # Spacing
     doc.add_paragraph()
 
-    # Centered Title: ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப., அவர்களின் செய்திக்குறிப்பு-
+    # Centered Title
     title_p1 = doc.add_paragraph()
     title_p1.alignment = WD_ALIGN_PARAGRAPH.CENTER
     r_title1 = title_p1.add_run("ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,\nஅவர்களின் செய்திக்குறிப்பு-")
@@ -139,32 +177,23 @@ def _export_press_release_docx(doc: Document, content_data: Dict[str, Any]):
     r_sep.font.bold = True
     r_sep.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
-    # Body Paragraphs — clean to prevent duplicate headers/footers
+    # Clean body paragraphs
     body_text = content_data.get("content_body", "")
-    if body_text:
-        for p_text in body_text.split("\n\n"):
-            clean_p = p_text.strip()
-            if not clean_p:
-                continue
-            # Skip any duplicate header markers if already present in body text
-            if clean_p.startswith("செ.வெ.எண்") or "மாவட்ட ஆட்சித்தலைவர்" in clean_p and "செய்திக்குறிப்பு" in clean_p or clean_p == "----" or clean_p == "---":
-                continue
-            # Skip duplicate footer markers if already present in body text
-            if "செய்தி மக்கள் தொடர்பு அலுவலர்" in clean_p or clean_p.startswith("----------------") or clean_p.startswith("========"):
-                continue
+    clean_paras = _extract_clean_body_paragraphs(body_text)
 
-            body_p = doc.add_paragraph()
-            body_p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            body_p.paragraph_format.line_spacing = 1.3
-            body_p.paragraph_format.space_after = Pt(10)
-            run = body_p.add_run(clean_p)
-            run.font.size = Pt(11)
-            run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+    for p_text in clean_paras:
+        body_p = doc.add_paragraph()
+        body_p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        body_p.paragraph_format.line_spacing = 1.3
+        body_p.paragraph_format.space_after = Pt(10)
+        run = body_p.add_run(p_text)
+        run.font.size = Pt(11)
+        run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
-    # Bottom line
+    # Bottom separator
     doc.add_paragraph("─" * 60)
 
-    # DIPR Footer (Only once)
+    # DIPR Footer
     footer_p = doc.add_paragraph()
     footer_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     r_footer = footer_p.add_run("வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்.")
@@ -175,7 +204,6 @@ def _export_press_release_docx(doc: Document, content_data: Dict[str, Any]):
 
 def _export_circular_docx(doc: Document, content_data: Dict[str, Any]):
     """Format specifically according to Erode District Collectorate Circular layout."""
-    # Top header table: சுற்றறிக்கை எண் and நாள்
     header_table = doc.add_table(rows=1, cols=2)
     header_table.autofit = True
     row = header_table.rows[0]
@@ -196,7 +224,6 @@ def _export_circular_docx(doc: Document, content_data: Dict[str, Any]):
 
     doc.add_paragraph()
 
-    # Centered Header
     title_p1 = doc.add_paragraph()
     title_p1.alignment = WD_ALIGN_PARAGRAPH.CENTER
     r_title1 = title_p1.add_run("ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,\nஅவர்களின் சுற்றறிக்கை-")
@@ -211,35 +238,29 @@ def _export_circular_docx(doc: Document, content_data: Dict[str, Any]):
     r_sep.font.bold = True
     r_sep.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
-    # Body paragraphs
     body_text = content_data.get("content_body", "")
-    if body_text:
-        for p_text in body_text.split("\n\n"):
-            clean_p = p_text.strip()
-            if not clean_p:
-                continue
-            if clean_p.startswith("சுற்றறிக்கை எண்") or "மாவட்ட ஆட்சித்தலைவர்" in clean_p and "சுற்றறிக்கை" in clean_p or clean_p == "----" or clean_p == "---":
-                continue
-            if "செய்தி மக்கள் தொடர்பு அலுவலர்" in clean_p or clean_p.startswith("----------------") or clean_p.startswith("========"):
-                continue
+    clean_paras = _extract_clean_body_paragraphs(body_text)
 
-            body_p = doc.add_paragraph()
-            body_p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            body_p.paragraph_format.line_spacing = 1.3
-            body_p.paragraph_format.space_after = Pt(10)
-            run = body_p.add_run(clean_p)
-            run.font.size = Pt(11)
-            run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+    for p_text in clean_paras:
+        body_p = doc.add_paragraph()
+        body_p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        body_p.paragraph_format.line_spacing = 1.3
+        body_p.paragraph_format.space_after = Pt(10)
+        run = body_p.add_run(p_text)
+        run.font.size = Pt(11)
+        run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
     doc.add_paragraph("─" * 60)
 
-    # DIPR Footer (Only once)
     footer_p = doc.add_paragraph()
     footer_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     r_footer = footer_p.add_run("வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்.")
+    r_footer.font.size = Pt(10.5)
+    r_footer.font.bold = True
+
+
 def _export_memo_docx(doc: Document, content_data: Dict[str, Any]):
     """Format specifically according to Erode District Collectorate Office Memorandum layout."""
-    # Top header table: குறிப்பாணை எண் and நாள்
     header_table = doc.add_table(rows=1, cols=2)
     header_table.autofit = True
     row = header_table.rows[0]
@@ -260,7 +281,6 @@ def _export_memo_docx(doc: Document, content_data: Dict[str, Any]):
 
     doc.add_paragraph()
 
-    # Centered Header
     title_p1 = doc.add_paragraph()
     title_p1.alignment = WD_ALIGN_PARAGRAPH.CENTER
     r_title1 = title_p1.add_run("ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,\nஅவர்களின் அலுவலகக் குறிப்பாணை-")
@@ -275,37 +295,29 @@ def _export_memo_docx(doc: Document, content_data: Dict[str, Any]):
     r_sep.font.bold = True
     r_sep.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
-    # Body paragraphs
     body_text = content_data.get("content_body", "")
-    if body_text:
-        for p_text in body_text.split("\n\n"):
-            clean_p = p_text.strip()
-            if not clean_p:
-                continue
-            if clean_p.startswith("குறிப்பாணை எண்") or "மாவட்ட ஆட்சித்தலைவர்" in clean_p and "குறிப்பாணை" in clean_p or clean_p == "----" or clean_p == "---":
-                continue
-            if "செய்தி மக்கள் தொடர்பு அலுவலர்" in clean_p or clean_p.startswith("----------------") or clean_p.startswith("========"):
-                continue
+    clean_paras = _extract_clean_body_paragraphs(body_text)
 
-            body_p = doc.add_paragraph()
-            body_p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            body_p.paragraph_format.line_spacing = 1.3
-            body_p.paragraph_format.space_after = Pt(10)
-            run = body_p.add_run(clean_p)
-            run.font.size = Pt(11)
-            run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+    for p_text in clean_paras:
+        body_p = doc.add_paragraph()
+        body_p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        body_p.paragraph_format.line_spacing = 1.3
+        body_p.paragraph_format.space_after = Pt(10)
+        run = body_p.add_run(p_text)
+        run.font.size = Pt(11)
+        run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
     doc.add_paragraph("─" * 60)
 
-    # DIPR Footer (Only once)
     footer_p = doc.add_paragraph()
     footer_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     r_footer = footer_p.add_run("வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்.")
     r_footer.font.size = Pt(10.5)
     r_footer.font.bold = True
+
+
 def _export_meeting_minutes_docx(doc: Document, content_data: Dict[str, Any]):
     """Format specifically according to Erode District Meeting Minutes layout."""
-    # Top Centered Header
     title_p1 = doc.add_paragraph()
     title_p1.alignment = WD_ALIGN_PARAGRAPH.CENTER
     r_title1 = title_p1.add_run(
@@ -317,7 +329,6 @@ def _export_meeting_minutes_docx(doc: Document, content_data: Dict[str, Any]):
     r_title1.font.bold = True
     r_title1.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
-    # Reference line table
     header_table = doc.add_table(rows=1, cols=2)
     header_table.autofit = True
     row = header_table.rows[0]
@@ -338,7 +349,6 @@ def _export_meeting_minutes_docx(doc: Document, content_data: Dict[str, Any]):
 
     doc.add_paragraph("─" * 60)
 
-    # Subject & Reference
     subj_p = doc.add_paragraph()
     r_subj = subj_p.add_run(f"பொருள்: {content_data['subject']} – கூட்ட நடவடிக்கைகள் – ஒப்புதல் அளித்தல் – தொடர்பாக.")
     r_subj.font.size = Pt(10.5)
@@ -356,29 +366,20 @@ def _export_meeting_minutes_docx(doc: Document, content_data: Dict[str, Any]):
     r_sep.font.size = Pt(11)
     r_sep.font.bold = True
 
-    # Body paragraphs
     body_text = content_data.get("content_body", "")
-    if body_text:
-        for p_text in body_text.split("\n\n"):
-            clean_p = p_text.strip()
-            if not clean_p:
-                continue
-            if "கூட்ட நடவடிக்கைகள்" in clean_p and "தலைமையில்" in clean_p or clean_p.startswith("எண்:") or clean_p.startswith("பொருள்:") or clean_p.startswith("பார்வை:") or clean_p == "<><><>":
-                continue
-            if "ஓம்/-ச.கந்தசாமி" in clean_p or "நேர்முக உதவியாளர்" in clean_p or clean_p.startswith("----------------"):
-                continue
+    clean_paras = _extract_clean_body_paragraphs(body_text)
 
-            body_p = doc.add_paragraph()
-            body_p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            body_p.paragraph_format.line_spacing = 1.3
-            body_p.paragraph_format.space_after = Pt(10)
-            run = body_p.add_run(clean_p)
-            run.font.size = Pt(11)
-            run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+    for p_text in clean_paras:
+        body_p = doc.add_paragraph()
+        body_p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        body_p.paragraph_format.line_spacing = 1.3
+        body_p.paragraph_format.space_after = Pt(10)
+        run = body_p.add_run(p_text)
+        run.font.size = Pt(11)
+        run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
 
     doc.add_paragraph("─" * 60)
 
-    # Signature Block
     sign_p = doc.add_paragraph()
     sign_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     r_sign = sign_p.add_run("ஓம்/-ச.கந்தசாமி\nமாவட்ட ஆட்சித்தலைவர்,\nஈரோடு.\n")
@@ -394,61 +395,47 @@ def _export_meeting_minutes_docx(doc: Document, content_data: Dict[str, Any]):
 
 
 def export_to_docx(content_data: Dict[str, Any]) -> Path:
-    """Export generated content to a formatted .docx file.
-
-    Args:
-        content_data: Dict from OfficialContentGenerator.generate()
-
-    Returns:
-        Path to the generated .docx file.
-    """
+    """Export generated content to a formatted .docx file."""
     doc = Document()
 
-    # Page margins
+    # Set margins (0.8 inch)
     for section in doc.sections:
         section.top_margin = Inches(0.8)
         section.bottom_margin = Inches(0.8)
-        section.left_margin = Inches(1.0)
-        section.right_margin = Inches(1.0)
+        section.left_margin = Inches(0.8)
+        section.right_margin = Inches(0.8)
 
-    # Specialized layout by template type
-    if content_data.get("template_type") == "press_release":
+    template_type = content_data.get("template_type", "press_release")
+
+    # Route to specialized authentic Erode district layout
+    if template_type == "press_release":
         _export_press_release_docx(doc, content_data)
-    elif content_data.get("template_type") == "circular":
+    elif template_type == "circular":
         _export_circular_docx(doc, content_data)
-    elif content_data.get("template_type") == "memo":
+    elif template_type == "memo":
         _export_memo_docx(doc, content_data)
-    elif content_data.get("template_type") == "meeting_minutes":
+    elif template_type == "meeting_minutes":
         _export_meeting_minutes_docx(doc, content_data)
     else:
-        template_title = f"{content_data['template_title_ta']} ({content_data['template_title_en']})"
+        # Generic official document
         _add_header(
             doc,
-            template_title=template_title,
-            ref_number=content_data["ref_number"],
-            date_str=content_data["date_display"],
-            officer_id=content_data["officer_id"],
+            template_title=content_data.get("template_title_ta", "அலுவல் ஆவணம்"),
+            ref_number=content_data.get("ref_number", "ERD/GEN/2026/001"),
+            date_str=content_data.get("date_display", datetime.now().strftime("%d.%m.%Y")),
+            officer_id=content_data.get("officer_id", "OFC001"),
         )
-
-        subject_para = doc.add_paragraph()
-        subject_run = subject_para.add_run(f"பொருள் (Subject): {content_data['subject']}")
-        subject_run.font.size = Pt(11)
-        subject_run.font.bold = True
-        subject_run.font.color.rgb = TN_NAVY
-
-        doc.add_paragraph("─" * 60)
-
         body_text = content_data.get("content_body", "")
-        if body_text:
-            for paragraph_text in body_text.split("\n\n"):
-                if paragraph_text.strip():
-                    body_para = doc.add_paragraph()
-                    body_run = body_para.add_run(paragraph_text.strip())
-                    body_run.font.size = Pt(11)
-
+        clean_paras = _extract_clean_body_paragraphs(body_text)
+        for p_text in clean_paras:
+            body_p = doc.add_paragraph()
+            body_p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            body_p.paragraph_format.line_spacing = 1.3
+            body_p.paragraph_format.space_after = Pt(10)
+            run = body_p.add_run(p_text)
+            run.font.size = Pt(11)
         _add_footer(doc)
 
-    # Save
     output_dir = config.OUTPUTS_CONTENT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -471,7 +458,6 @@ def export_to_pdf(content_data: Dict[str, Any]) -> Path:
     doc = pymupdf.open()
     page = doc.new_page(width=595, height=842)  # A4
 
-    # Navy color (0.10, 0.23, 0.36) -> #1A3A5C
     c_navy = (0.10, 0.23, 0.36)
     c_dark = (0.13, 0.13, 0.13)
     c_gray = (0.50, 0.50, 0.50)
@@ -479,44 +465,25 @@ def export_to_pdf(content_data: Dict[str, Any]) -> Path:
     template_type = content_data.get("template_type", "press_release")
 
     if template_type == "press_release":
-        # Header line: செ.வெ.எண் and நாள்
         page.insert_text((50, 55), f"செ.வெ.எண் - {content_data['ref_number']}", fontfile=font_path, fontsize=10.5, color=c_navy)
         page.insert_text((430, 55), f"நாள் - {content_data['date_display']}", fontfile=font_path, fontsize=10.5, color=c_navy)
-
-        # Title
         page.insert_text((235, 95), "ஈரோடு மாவட்டம்", fontfile=font_path, fontsize=14, color=c_navy)
-        
-        # Subject headline
+
         subj_rect = pymupdf.Rect(50, 110, 545, 160)
         page.insert_textbox(subj_rect, content_data['subject'], fontfile=font_path, fontsize=11.5, color=c_navy, align=1)
-
-        # Separator line
         page.draw_line(pymupdf.Point(50, 165), pymupdf.Point(545, 165), color=c_navy, width=0.8)
 
-        # Body paragraphs
         body_text = content_data.get("content_body", "")
-        cleaned_paras = []
-        if body_text:
-            for p_text in body_text.split("\n\n"):
-                clean_p = p_text.strip()
-                if not clean_p:
-                    continue
-                if clean_p.startswith("செ.வெ.எண்") or clean_p == "ஈரோடு மாவட்டம்" or clean_p == content_data.get('subject') or clean_p == "---":
-                    continue
-                if "செய்தி மக்கள் தொடர்பு அலுவலர்" in clean_p or clean_p.startswith("----------------") or clean_p.startswith("========"):
-                    continue
-                cleaned_paras.append(clean_p)
-
+        cleaned_paras = _extract_clean_body_paragraphs(body_text)
         full_body = "\n\n".join(cleaned_paras)
+
         body_rect = pymupdf.Rect(50, 180, 545, 750)
         page.insert_textbox(body_rect, full_body, fontfile=font_path, fontsize=10.5, color=c_dark, lineheight=1.5)
 
-        # Footer
         page.draw_line(pymupdf.Point(50, 770), pymupdf.Point(545, 770), color=c_gray, width=0.5)
         page.insert_text((50, 790), "வெளியீடு - செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்.", fontfile=font_path, fontsize=9.5, color=c_navy)
 
     else:
-        # Standard Official Document layout
         page.insert_text((180, 55), "தமிழ்நாடு அரசு — மாவட்ட ஆட்சியர் அலுவலகம்", fontfile=font_path, fontsize=12, color=c_navy)
         page.insert_text((245, 75), "ஈரோடு மாவட்டம்", fontfile=font_path, fontsize=11, color=c_navy)
 
@@ -529,14 +496,16 @@ def export_to_pdf(content_data: Dict[str, Any]) -> Path:
         page.draw_line(pymupdf.Point(50, 145), pymupdf.Point(545, 145), color=c_navy, width=0.8)
 
         body_text = content_data.get("content_body", "")
+        cleaned_paras = _extract_clean_body_paragraphs(body_text)
+        full_body = "\n\n".join(cleaned_paras)
+
         body_rect = pymupdf.Rect(50, 160, 545, 740)
-        page.insert_textbox(body_rect, body_text, fontfile=font_path, fontsize=10.5, color=c_dark, lineheight=1.5)
+        page.insert_textbox(body_rect, full_body, fontfile=font_path, fontsize=10.5, color=c_dark, lineheight=1.5)
 
         page.draw_line(pymupdf.Point(50, 755), pymupdf.Point(545, 755), color=c_gray, width=0.5)
         page.insert_text((380, 775), "மாவட்ட ஆட்சியர் சார்பாக,", fontfile=font_path, fontsize=10, color=c_navy)
         page.insert_text((410, 790), "ஈரோடு மாவட்டம்.", fontfile=font_path, fontsize=10, color=c_navy)
 
-    # Save PDF
     output_dir = config.OUTPUTS_CONTENT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{content_data['content_id']}_{content_data['template_type']}.pdf"

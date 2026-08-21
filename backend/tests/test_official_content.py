@@ -117,3 +117,29 @@ def test_database_persistence(generator):
 
     history = list_official_content(officer_id="OFC_TEST")
     assert len(history) >= 1
+
+def test_export_preserves_all_body_paragraphs():
+    long_body = (
+        "ஈரோடு மாவட்டம், மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப., அவர்கள் தலைமையில் அரசு செய்திக்குறிப்புகளில் இடம்பெறும் வாக்கிய அமைப்பில் சில முரண்பாடுகள் உள்ளன: குறித்த முக்கிய ஆய்வு மற்றும் பணிகள் இன்று (21.08.2026) மாவட்ட ஆட்சித்தலைவர் அலுவலகம் மற்றும் களப்பகுதிகளில் நேரில் பார்வையிட்டு ஆய்வு மேற்கொள்ளப்பட்டது.\n\n"
+        "ஈரோடு மாவட்டத்தில் பொதுமக்களின் நலன் கருதி மேற்கொள்ளப்பட்டு வரும் வளர்ச்சித் திட்டப் பணிகளில், அரசுத் திட்ட அறிவிப்பும் கள ஆய்வும் கலந்திருப்பது:செய்திக்குறிப்பின் நோக்கம் புனிதப் பயண நிதி உதவி திட்டத்திற்கு விண்ணப்பங்கள் வரவேற்பது ஆகும்.\n\n"
+        "இந்நிகழ்வின் போது, மாவட்ட வருவாய் அலுவலர் திரு.சு.சாந்தகுமார், திட்ட இயக்குநர் (ஊரக வளர்ச்சி முகமை), வருவாய் கோட்டாட்சியர், வட்டாட்சியர், வட்டார வளர்ச்சி அலுவலர்கள் மற்றும் தொடர்புடைய துறை சார்ந்த அலுவலர்கள் பலர் கலந்து கொண்டனர்."
+    )
+    content_data = {
+        "content_id": "cnt_test_preserve",
+        "template_type": "press_release",
+        "ref_number": "65",
+        "date_display": "21.08.2026",
+        "subject": "செய்திக்குறிப்பு ஆய்வு",
+        "content_body": long_body,
+        "officer_id": "OFC_TEST",
+    }
+    docx_path = export_to_docx(content_data)
+    assert Path(docx_path).exists()
+    
+    from docx import Document
+    doc = Document(docx_path)
+    doc_text = " ".join([p.text for p in doc.paragraphs])
+    assert "வாக்கிய அமைப்பில் சில முரண்பாடுகள் உள்ளன" in doc_text
+    assert "புனிதப் பயண நிதி உதவி" in doc_text
+    assert "மாவட்ட வருவாய் அலுவலர்" in doc_text
+
