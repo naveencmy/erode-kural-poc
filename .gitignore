@@ -32,7 +32,6 @@ htmlcov/
 
 # Virtual Environments
 .venv/
-.venv/
 venv/
 ENV/
 env/
@@ -49,11 +48,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Databases & Runtime Output / Scans
-backend/collectorate_workflow.db
-backend/collectorate_workflow.db-journal
+# Databases & Runtime Output
 *.sqlite3
 *.db
+backend/collectorate_workflow.db
+backend/collectorate_workflow.db-journal
 backend/outputs/charts/*.png
 !backend/outputs/charts/.gitkeep
 backend/outputs/acknowledgements/*.docx
@@ -62,6 +61,7 @@ backend/data/scans/*
 !backend/data/scans/.gitkeep
 backend/data/processed/*
 !backend/data/processed/.gitkeep
+backend/outputs/
 
 # IDE & OS Files
 .vscode/
@@ -72,5 +72,14 @@ backend/data/processed/*
 .DS_Store
 Thumbs.db
 
+# AI Tool Configs (not for public repo)
+.agents/
+.claude/
+
+# Generated Dumps & Scratch
+digest.txt
+scratch/
+
+# Binary Artifacts
 backend/*.pdf
-backend/outputs/
+backend/uploads/

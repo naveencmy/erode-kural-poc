@@ -140,68 +140,85 @@ flowchart TB
 
 ---
 
-## 📁 Repository Directory Structure
+## 📁 Repository Structure
 
 ```
 Erode_Collectrate/
+├── LICENSE                                  # MIT License
+├── README.md                                # Project documentation
+├── CONTRIBUTING.md                          # Contribution guidelines
+├── CHANGELOG.md                             # Version history
+├── SECURITY.md                              # Security disclosure policy
+├── CODE_OF_CONDUCT.md                       # Contributor Covenant
+├── PRESENTATION.md                          # Executive presentation deck
+├── .gitignore                               # Unified ignore rules
+├── docker-compose.mailpit.yml               # Mailpit dev service
+│
 ├── backend/
-│   ├── config.py                           # Central configuration & directory paths
-│   ├── main.py                             # Unified CLI runner (--mode all | api | worker)
-│   ├── server.py                           # FastAPI application & router registry
+│   ├── config.py                            # Central configuration & directory paths
+│   ├── main.py                              # Unified CLI runner (--mode all | api | worker)
+│   ├── server.py                            # FastAPI application & router registry
+│   ├── requirements.txt                     # Python dependencies
+│   ├── .env.example                         # Environment variable template
 │   ├── modules/
-│   │   ├── document_summary/               # Module 1: Document Summarization & Dynamic RAG
-│   │   │   ├── extractor.py                # Multi-format text/table extraction
-│   │   │   ├── fingerprinter.py            # Qwen 2.5 7B AI Content Fingerprinting
-│   │   │   ├── hallucination_barrier.py    # Zero-hallucination verification
-│   │   │   ├── suggestion_engine.py        # Dynamic prompt suggestions & CTR ranking
-│   │   │   ├── summarizer.py               # Structured summary generator
-│   │   │   └── router.py                   # Document & Suggestion REST endpoints
-│   │   ├── data_viz/                       # Module 2: Data Analytics & Visualization
-│   │   │   ├── chart_engine.py             # Recharts & PNG visual rendering
-│   │   │   ├── ingestion.py                # Dataset ingestion & caching
-│   │   │   ├── profiler.py                 # 1.5x IQR Outlier detection
-│   │   │   ├── query_engine.py             # Tamil NL to AST-sandboxed Pandas execution
-│   │   │   ├── sandbox.py                  # Python AST security validator
-│   │   │   ├── schema_detector.py          # Auto-detection of taluks, depts, amounts
-│   │   │   └── router.py                   # Data viz REST endpoints
-│   │   └── mail/                           # Module 5: Mail Ingestion & Dispatch
-│   │       ├── imap_worker.py              # Inbound email polling worker
-│   │       ├── smtp_client.py              # Outbound dispatch engine
-│   │       └── router.py                   # Mail REST endpoints
-│   ├── pipeline/                           # Core Pipeline Engine
-│   │   ├── database.py                     # SQLite schema, migrations & CRUD operations
-│   │   ├── ocr_engine.py                   # Tesseract dual-language OCR
-│   │   ├── orchestrator.py                 # File watcher & workflow coordinator
-│   │   └── verhoeff.py                     # Mathematical Aadhaar validator
+│   │   ├── document_summary/                # Module 1: Document Summarization & Dynamic RAG
+│   │   │   ├── extractor.py                 # Multi-format text/table extraction
+│   │   │   ├── fingerprinter.py             # Qwen 2.5 7B AI Content Fingerprinting
+│   │   │   ├── hallucination_barrier.py     # Zero-hallucination verification
+│   │   │   ├── suggestion_engine.py         # Dynamic prompt suggestions & CTR ranking
+│   │   │   ├── summarizer.py                # Structured summary generator
+│   │   │   └── router.py                    # Document & Suggestion REST endpoints
+│   │   ├── data_viz/                        # Module 2: Data Analytics & Visualization
+│   │   │   ├── chart_engine.py              # Recharts & PNG visual rendering
+│   │   │   ├── ingestion.py                 # Dataset ingestion & caching
+│   │   │   ├── profiler.py                  # 1.5× IQR Outlier detection
+│   │   │   ├── query_engine.py              # Tamil NL → AST-sandboxed Pandas execution
+│   │   │   ├── sandbox.py                   # Python AST security validator
+│   │   │   ├── schema_detector.py           # Auto-detection of taluks, depts, amounts
+│   │   │   └── router.py                    # Data viz REST endpoints
+│   │   ├── official_content/                # Module 3: Official Content Generation
+│   │   │   ├── generator.py                 # Template-based document generator
+│   │   │   ├── exporter.py                  # DOCX & PDF export engine
+│   │   │   └── templates.py                 # Tamil Nadu government template registry
+│   │   └── mail/                            # Module 5: Mail Ingestion & Dispatch
+│   │       ├── engine.py                    # Bidirectional IMAP/SMTP engine
+│   │       └── router.py                    # Mail REST endpoints
+│   ├── pipeline/                            # Core Pipeline Engine
+│   │   ├── database.py                      # SQLite schema, migrations & CRUD
+│   │   ├── ocr_engine.py                    # Tesseract dual-language OCR
+│   │   ├── rag_engine.py                    # ChromaDB RAG retrieval engine
+│   │   ├── orchestrator.py                  # File watcher & workflow coordinator
+│   │   └── verhoeff.py                      # Mathematical Aadhaar validator
 │   ├── routers/
-│   │   ├── content.py                      # Content generation router
-│   │   └── general.py                      # General assistant router
-│   ├── tests/                              # Automated test suite (Pytest)
-│   │   ├── test_document_summary.py        # 8 tests for Module 1
-│   │   ├── test_data_viz.py                # 11 tests for Module 2
-│   │   └── test_mail_engine.py             # Mail integration tests
-│   └── data/
-│       └── seed_datasets.py                # Seed collectorate administrative datasets
+│   │   ├── content.py                       # Official content generation router
+│   │   └── general.py                       # General assistant router
+│   ├── tests/                               # Automated test suite (pytest)
+│   │   ├── test_pipeline.py                 # 12 tests — core pipeline
+│   │   ├── test_document_summary.py         # 8 tests — Module 1
+│   │   ├── test_data_viz.py                 # 11 tests — Module 2
+│   │   ├── test_official_content.py         # 8 tests — Module 3
+│   │   └── test_mail_engine.py              # 8 tests — Module 5
+│   ├── templates/                           # Jinja2 acknowledgement templates
+│   └── data/                                # Seed data & lookups
 │
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── layout/                     # Sidebar, TopBar, MainContent
-│   │   │   ├── modules/                    # DataModule, ContentModule, BulkModule, etc.
-│   │   │   └── shared/                     # ConfidenceBadge, TnEmblem
-│   │   ├── lib/
-│   │   │   └── api.js                      # Central API client
-│   │   ├── stores/
-│   │   │   └── appStore.js                 # Zustand global application state
-│   │   ├── locales/                        # Tamil (ta.json) & English (en.json)
-│   │   ├── App.jsx
-│   │   └── index.css                       # Tamil Nadu Government design system
-│   ├── package.json
-│   └── vite.config.js                      # Vite proxy & build configuration
-│
-├── PRESENTATION.md                         # Executive presentation deck & pitch
-├── walkthrough.md                          # Technical change log & walkthrough
-└── README.md                               # Project documentation
+└── frontend/
+    ├── package.json                         # Node dependencies
+    ├── vite.config.js                       # Vite proxy & build config
+    ├── index.html                           # SPA entry point
+    ├── public/                              # Static assets (TN Seal, favicons)
+    └── src/
+        ├── App.jsx                          # Root application component
+        ├── index.css                        # Tamil Nadu Government design system
+        ├── components/
+        │   ├── layout/                      # Sidebar, TopBar, MainContent
+        │   ├── modules/                     # DataModule, ContentModule, BulkModule, etc.
+        │   ├── shared/                      # ConfidenceBadge, TnEmblem
+        │   └── icons/                       # SVG icon components
+        ├── lib/
+        │   └── api.js                       # Central API client
+        ├── stores/
+        │   └── appStore.js                  # Zustand global state
+        └── locales/                         # Tamil (ta.json) & English (en.json)
 ```
 
 ---
@@ -271,7 +288,19 @@ pytest tests/test_document_summary.py tests/test_data_viz.py -v
 
 ---
 
-## 📜 License & Acknowledgements
+## 📜 License
 
-- Built for the **Erode District Administration, Government of Tamil Nadu**.
-- Designed to empower district officers with modern, secure, and verifiable AI workflows.
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+We welcome contributions! Please read our [Contributing Guidelines](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting a pull request.
+
+## 🔒 Security
+
+For reporting vulnerabilities, please see our [Security Policy](SECURITY.md).
+
+## 🙏 Acknowledgements
+
+Built for the **Erode District Administration, Government of Tamil Nadu**.  
+Designed to empower district officers with modern, secure, and verifiable AI workflows.

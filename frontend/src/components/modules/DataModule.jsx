@@ -54,11 +54,40 @@ import {
 
 const CHART_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#14b8a6', '#f97316'];
 
-const RECOMMENDED_PROMPTS = [
-  { id: 'summary', icon: '📊', label: 'Summarize this data', query: 'Summarize this dataset and provide key overview metrics.' },
-  { id: 'trends', icon: '📈', label: 'Explain the major trends', query: 'Explain the major trends and patterns observed in this dataset.' },
-  { id: 'anomalies', icon: '🔍', label: 'Find unusual values', query: 'Identify any potential anomalies, outliers, or unusual data points.' },
-];
+// Dynamic prompt generator grounded in dataset columns & administrative domain
+function generateDynamicPrompts(schema, selectedCategoryCol, selectedMetricCol) {
+  if (!schema || !schema.columns || schema.columns.length === 0) {
+    return [
+      { id: 'summary', icon: '📊', label: 'தரவுத்தொகுப்பின் முழு சுருக்கம்', query: 'இந்த தரவுத்தொகுப்பின் முக்கிய அளவீடுகள் மற்றும் சுருக்கத்தை விளக்குக.' },
+      { id: 'trends', icon: '📈', label: 'முக்கிய போக்குகள் மற்றும் ஒப்பீடு', query: 'இந்த தரவில் காணப்படும் முக்கிய போக்குகள் மற்றும் ஒப்பீடுகளை விவரிக்கவும்.' },
+      { id: 'anomalies', icon: '🔍', label: 'அசாதாரண மதிப்புகள் (Outliers)', query: 'இதில் உள்ள அசாதாரண அல்லது முரண்பாடான மதிப்புகளை (Outliers) கண்டறிக.' },
+    ];
+  }
+
+  const catName = selectedCategoryCol || schema.taluk_column || schema.department_column || schema.columns.find(c => c.type === 'text')?.name || 'பிரிவு';
+  const numName = selectedMetricCol || schema.amount_column || schema.columns.find(c => c.type === 'number')?.name || 'மதிப்பு';
+
+  return [
+    {
+      id: 'highest',
+      icon: '🏆',
+      label: `எந்த ${catName} அதிக ${numName} கொண்டுள்ளது?`,
+      query: `எந்த ${catName} பிரிவில் அதிக ${numName} பதிவாகியுள்ளது? விரிவான விளக்கம் தருக.`,
+    },
+    {
+      id: 'distribution',
+      icon: '📊',
+      label: `${catName} வாரியான ${numName} ஒப்பீட்டு சுருக்கம்`,
+      query: `${catName} வாரியாக ${numName} அளவீடுகளை ஒப்பிட்டு முக்கிய விவரங்களை விளக்குக.`,
+    },
+    {
+      id: 'outliers',
+      icon: '🔍',
+      label: `${numName} அடிப்படையில் அசாதாரண மதிப்புகள் (Outliers)`,
+      query: `${numName} தரவில் 1.5x IQR அடிப்படையில் ஏதேனும் அசாதாரண அல்லது தீவிர மதிப்புகள் (Outliers) உள்ளதா?`,
+    },
+  ];
+}
 
 export default function DataModule() {
   const { t } = useTranslation();
@@ -1546,7 +1575,7 @@ export default function DataModule() {
                 <div style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: 1 }}>
                   Recommended Prompts
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {RECOMMENDED_PROMPTS.map((prompt) => (
                     <button
                       key={prompt.id}

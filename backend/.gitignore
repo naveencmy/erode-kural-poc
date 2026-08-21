@@ -3,65 +3,33 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Environment & Secrets
-.env
-.env.*
-!.env.example
-
-# Virtual Environment
-.venv/
-.venv/
-venv/
-ENV/
-env/
-env.bak/
-venv.bak/
-
-# Streamlit & IDE Agent Skills symlinks
-.agents/
-.claude/
-.streamlit/
-
-# Testing & Coverage
 .pytest_cache/
 .coverage
 htmlcov/
 
-# Local SQLite databases (Keep code/config, ignore runtime DB)
+# Virtual Environments
+.venv/
+venv/
+
+# Environment Secrets
+.env
+.env.*
+!.env.example
+
+# Database & Runtime
 collectorate_workflow.db
+collectorate_workflow.db-journal
 *.db-journal
-*.db-wal
-*.db-shm
 
-# Ignore raw runtime uploaded petitions (keep directory structure)
-uploads/emails/*
-uploads/scanned/*
-uploads/processed/*
-uploads/incoming_dev_mailbox/*
-!uploads/emails/.gitkeep
-!uploads/scanned/.gitkeep
-!uploads/processed/.gitkeep
-!uploads/incoming_dev_mailbox/.gitkeep
+# Generated Outputs
+outputs/
+uploads/
+*.pdf
 
-# Temporary & Scratch Files
+# AI Tool Configs
+.agents/
+.claude/
+
+# Generated Dumps & Scratch
+digest.txt
 scratch/
-*.tmp
-*.log
