@@ -21,7 +21,6 @@ import {
   Upload,
   X,
   Plus,
-  Sparkles,
   ChevronRight,
   RotateCcw,
   Share2,
@@ -34,7 +33,179 @@ const DOC_SUGGESTION_KEYS = [
   'general.doc_suggestion4',
 ];
 
+const renderInlineFormatting = (lineText) => {
+  if (!lineText) return null;
+  const parts = [];
+  let remaining = lineText;
+  let keyIdx = 0;
 
+  while (remaining.length > 0) {
+    const boldMatch = remaining.match(/^(.*?)\*\*(.+?)\*\*(.*)$/s);
+    const codeMatch = remaining.match(/^(.*?)`(.+?)`(.*)$/s);
+    const italicMatch = remaining.match(/^(.*?)\*(.+?)\*(.*)$/s);
+
+    const matches = [
+      boldMatch ? { type: 'bold', match: boldMatch, index: boldMatch[1].length } : null,
+      codeMatch ? { type: 'code', match: codeMatch, index: codeMatch[1].length } : null,
+      italicMatch && (!boldMatch || italicMatch.index < boldMatch.index) ? { type: 'italic', match: italicMatch, index: italicMatch[1].length } : null,
+    ].filter(Boolean).sort((a, b) => a.index - b.index);
+
+    if (matches.length > 0) {
+      const first = matches[0];
+      const prefix = first.match[1];
+      const inner = first.match[2];
+      const suffix = first.match[3];
+
+      if (prefix) parts.push(<span key={keyIdx++}>{prefix}</span>);
+
+      if (first.type === 'bold') {
+        parts.push(
+          <strong key={keyIdx++} style={{ fontWeight: 650, color: 'inherit' }}>
+            {inner}
+          </strong>
+        );
+      } else if (first.type === 'code') {
+        parts.push(
+          <code
+            key={keyIdx++}
+            style={{
+              background: 'rgba(0, 0, 0, 0.07)',
+              padding: '1px 5px',
+              borderRadius: 4,
+              fontSize: '0.88em',
+              fontFamily: 'monospace',
+            }}
+          >
+            {inner}
+          </code>
+        );
+      } else if (first.type === 'italic') {
+        parts.push(<em key={keyIdx++}>{inner}</em>);
+      }
+
+      remaining = suffix;
+    } else {
+      parts.push(<span key={keyIdx++}>{remaining}</span>);
+      break;
+    }
+  }
+  return parts;
+};
+
+const FormattedMessage = ({ text, isUser }) => {
+  if (!text) return null;
+  if (isUser) {
+    return <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{text}</div>;
+  }
+
+  // Remove decorative emojis from response to maintain clean professional Gemini appearance
+  const cleanedText = text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '').trim();
+
+  const rawLines = cleanedText.split('\n');
+  const blocks = [];
+  let currentList = [];
+  let listType = null; // 'bullet' or 'numbered'
+
+  const flushList = () => {
+    if (currentList.length > 0) {
+      if (listType === 'bullet') {
+        blocks.push(
+          <ul
+            key={`ul-${blocks.length}`}
+            style={{
+              margin: '4px 0 8px 0',
+              paddingLeft: 20,
+              listStyleType: 'disc',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            {currentList.map((item, idx) => (
+              <li key={idx} style={{ lineHeight: 1.6 }}>
+                {item}
+              </li>
+            ))}
+          </ul>
+        );
+      } else if (listType === 'numbered') {
+        blocks.push(
+          <ol
+            key={`ol-${blocks.length}`}
+            style={{
+              margin: '4px 0 8px 0',
+              paddingLeft: 20,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            {currentList.map((item, idx) => (
+              <li key={idx} style={{ lineHeight: 1.6 }}>
+                {item}
+              </li>
+            ))}
+          </ol>
+        );
+      }
+      currentList = [];
+      listType = null;
+    }
+  };
+
+  rawLines.forEach((rawLine, idx) => {
+    const line = rawLine.trim();
+    if (!line) {
+      flushList();
+      return;
+    }
+
+    // Bullet item (e.g. • or - or *)
+    const bulletMatch = line.match(/^([•\-\*])\s+(.*)$/);
+    if (bulletMatch) {
+      if (listType !== 'bullet') flushList();
+      listType = 'bullet';
+      currentList.push(renderInlineFormatting(bulletMatch[2]));
+      return;
+    }
+
+    // Numbered item (e.g. 1. or 1))
+    const numMatch = line.match(/^(\d+)[\.\)]\s+(.*)$/);
+    if (numMatch) {
+      if (listType !== 'numbered') flushList();
+      listType = 'numbered';
+      currentList.push(renderInlineFormatting(numMatch[2]));
+      return;
+    }
+
+    flushList();
+
+    // Headings
+    if (line.startsWith('### ')) {
+      blocks.push(
+        <h4 key={`h-${idx}`} style={{ margin: '10px 0 4px 0', fontSize: '1rem', fontWeight: 700, color: 'inherit' }}>
+          {renderInlineFormatting(line.slice(4))}
+        </h4>
+      );
+    } else if (line.startsWith('## ') || line.startsWith('# ')) {
+      blocks.push(
+        <h3 key={`h-${idx}`} style={{ margin: '12px 0 6px 0', fontSize: '1.08rem', fontWeight: 700, color: 'inherit' }}>
+          {renderInlineFormatting(line.replace(/^#+\s*/, ''))}
+        </h3>
+      );
+    } else {
+      blocks.push(
+        <div key={`p-${idx}`} style={{ margin: '0 0 6px 0', lineHeight: 1.65 }}>
+          {renderInlineFormatting(line)}
+        </div>
+      );
+    }
+  });
+
+  flushList();
+
+  return <div style={{ display: 'flex', flexDirection: 'column' }}>{blocks}</div>;
+};
 
 export default function GeneralModule() {
   const { t, i18n } = useTranslation();
@@ -255,7 +426,7 @@ export default function GeneralModule() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 110px)', gap: 10, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, flex: 1, gap: 8, overflow: 'hidden' }}>
       {/* Main Center Container */}
       <div
         ref={chatContainerRef}
@@ -266,13 +437,13 @@ export default function GeneralModule() {
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
-          gap: 10,
-          padding: '12px 16px',
+          gap: 8,
+          padding: '10px 14px',
           position: 'relative',
           background: 'var(--color-surface-card)',
           border: '1px solid var(--color-surface-border)',
-          borderRadius: 16,
-          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.03)',
+          borderRadius: 14,
+          boxShadow: '0 2px 10px rgba(0, 0, 0, 0.03)',
         }}
       >
         {/* Subtle Background Emblem Watermark */}
@@ -360,35 +531,35 @@ export default function GeneralModule() {
             }}
           >
             {/* Hero Emblem Banner */}
-            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
               <div
                 style={{
                   position: 'relative',
-                  width: 68,
-                  height: 68,
-                  borderRadius: 20,
+                  width: 56,
+                  height: 56,
+                  borderRadius: 16,
                   background: 'linear-gradient(135deg, var(--color-tn-primary) 0%, #0f2540 100%)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  boxShadow: '0 8px 20px rgba(26, 58, 92, 0.3)',
+                  boxShadow: '0 6px 16px rgba(26, 58, 92, 0.25)',
                 }}
               >
-                <TnEmblem size={44} opacity={0.95} className="text-[#c8a951]" />
+                <TnEmblem size={38} opacity={0.95} className="text-[#c8a951]" />
               </div>
               <h2
                 className="tamil-text"
-                style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--color-text-primary)', marginTop: 4 }}
+                style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary)', marginTop: 2 }}
               >
                 {t('general.welcome', { officerId })}
               </h2>
               <p
                 className="tamil-text"
                 style={{
-                  fontSize: '0.95rem',
+                  fontSize: '0.88rem',
                   color: 'var(--color-text-secondary)',
-                  maxWidth: 500,
-                  lineHeight: 1.5,
+                  maxWidth: 480,
+                  lineHeight: 1.45,
                 }}
               >
                 {t('general.subtitle')}
@@ -454,7 +625,6 @@ export default function GeneralModule() {
                             : '1px solid var(--color-surface-border)',
                         fontSize: '1rem',
                         lineHeight: 1.65,
-                        whiteSpace: 'pre-wrap',
                         wordBreak: 'break-word',
                         overflowWrap: 'break-word',
                         boxShadow: isUser
@@ -462,7 +632,7 @@ export default function GeneralModule() {
                           : '0 2px 8px rgba(0,0,0,0.03)',
                       }}
                     >
-                      {m.text}
+                      <FormattedMessage text={m.text} isUser={isUser} />
                     </div>
 
                     {/* Message Metadata & Action Toolbar */}
@@ -572,12 +742,12 @@ export default function GeneralModule() {
         style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: 10,
-          padding: '12px 16px',
+          gap: 6,
+          padding: '8px 14px',
           background: 'var(--color-surface-card)',
           border: '1px solid var(--color-surface-border)',
-          borderRadius: 16,
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+          borderRadius: 14,
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.04)',
           position: 'relative',
           zIndex: 10,
           width: '100%',
@@ -597,14 +767,14 @@ export default function GeneralModule() {
 
         {/* Attached File Section: 1. Suggestions (Vertical), 2. Document Chip */}
         {file && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {/* 1. 2x2 Grid of 4 Document Suggestions (Shown only when input is empty) */}
             {input.trim() === '' && (
               <div
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                  gap: 8,
+                  gap: 6,
                   width: '100%',
                   boxSizing: 'border-box',
                 }}
@@ -616,12 +786,12 @@ export default function GeneralModule() {
                     onClick={() => handleSend(t(key))}
                     className="tamil-text"
                     style={{
-                      padding: '8px 12px',
-                      borderRadius: 10,
+                      padding: '5px 10px',
+                      borderRadius: 6,
                       background: 'rgba(200, 169, 81, 0.08)',
                       border: '1px solid rgba(200, 169, 81, 0.25)',
                       color: 'var(--color-text-primary)',
-                      fontSize: '0.88rem',
+                      fontSize: '0.78rem',
                       fontWeight: 500,
                       textAlign: 'left',
                       cursor: 'pointer',
@@ -643,13 +813,10 @@ export default function GeneralModule() {
                       e.currentTarget.style.borderColor = 'rgba(200, 169, 81, 0.25)';
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
-                      <Sparkles size={14} style={{ color: 'var(--color-tn-accent)', flexShrink: 0 }} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-                        {t(key)}
-                      </span>
-                    </div>
-                    <ChevronRight size={14} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                      {t(key)}
+                    </span>
+                    <ChevronRight size={13} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
                   </button>
                 ))}
               </div>
@@ -758,7 +925,7 @@ export default function GeneralModule() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            paddingTop: 10,
+            paddingTop: 6,
             borderTop: '1px solid var(--color-surface-border)',
           }}
         >

@@ -49,6 +49,7 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  LabelList,
 } from 'recharts';
 
 const CHART_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#14b8a6', '#f97316'];
@@ -470,13 +471,12 @@ export default function DataModule() {
     return `${yCol} by ${xCol}`;
   };
 
-  // Download ONLY Clean Graph Visualization as PNG / JPEG (Excludes Tooltips, Hover States, Dropdowns & Buttons)
+  // Download Clean Graph Visualization as PNG / JPEG
   const handleDownloadGraph = async (format = 'png') => {
     setDownloadOpen(false);
     if (!exportContainerRef.current) return;
 
     try {
-      // Small delay to allow dropdown menu to close before capturing
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       const isDarkMode = document.documentElement.classList.contains('dark');
@@ -484,36 +484,48 @@ export default function DataModule() {
 
       const canvas = await html2canvas(exportContainerRef.current, {
         backgroundColor: bg,
-        scale: 3, // High-resolution export (~1650x950px output)
+        scale: 3, // High-resolution crisp export
         useCORS: true,
         logging: false,
         onclone: (clonedDoc) => {
-          // 1. Hide tooltips, hover popups, cursor lines, and active shapes in cloned DOM
+          // 1. Hide interactive tooltips or active hover rects
           const tooltips = clonedDoc.querySelectorAll(
-            '.recharts-tooltip-wrapper, .recharts-default-tooltip, .recharts-active-bar, .recharts-active-shape, .recharts-tooltip-cursor, .recharts-curve.recharts-tooltip-cursor, .recharts-crosshair'
+            '.recharts-tooltip-wrapper, .recharts-default-tooltip, .recharts-active-bar, .recharts-active-shape, .recharts-tooltip-cursor, .recharts-crosshair'
           );
           tooltips.forEach((el) => {
             el.style.display = 'none';
-            el.style.visibility = 'hidden';
-            el.style.opacity = '0';
           });
 
-          // 2. Clear any active hover opacity/dimming on bars, dots, and pie sectors
-          const elements = clonedDoc.querySelectorAll(
-            '.recharts-bar-rectangle path, .recharts-bar-rectangle rect, .recharts-pie-sector path, .recharts-dot, .recharts-area'
-          );
-          elements.forEach((el) => {
-            el.setAttribute('fill-opacity', '1');
-            el.setAttribute('opacity', '1');
-            el.style.opacity = '1';
-            el.style.fillOpacity = '1';
-          });
-
-          // 3. Ensure clean font rendering for Tamil & English text
-          const textElements = clonedDoc.querySelectorAll('text');
+          // 2. Ensure all text and SVG elements have clean typography and solid contrast fill
+          const textColor = format === 'jpeg' || !isDarkMode ? '#0f172a' : '#f8fafc';
+          const textElements = clonedDoc.querySelectorAll('text, span, div');
           textElements.forEach((txt) => {
             txt.style.fontFamily = "'Inter', 'Noto Sans Tamil', sans-serif";
+            txt.style.opacity = '1';
           });
+          const labelListTexts = clonedDoc.querySelectorAll('.recharts-label-list text, .recharts-label, .recharts-pie-labels text');
+          labelListTexts.forEach((lbl) => {
+            lbl.setAttribute('fill', textColor);
+            lbl.style.fill = textColor;
+            lbl.style.fontWeight = '700';
+            lbl.style.opacity = '1';
+            lbl.style.visibility = 'visible';
+            lbl.style.display = 'block';
+          });
+
+          // 3. Prepend clean title in exported image if not present
+          const exportWrap = clonedDoc.querySelector('.visualization-export-wrapper');
+          if (exportWrap && !exportWrap.querySelector('.export-title-banner')) {
+            const titleDiv = clonedDoc.createElement('div');
+            titleDiv.className = 'export-title-banner';
+            titleDiv.style.fontWeight = '700';
+            titleDiv.style.fontSize = '14px';
+            titleDiv.style.color = isDarkMode && format !== 'jpeg' ? '#f8fafc' : '#1e293b';
+            titleDiv.style.marginBottom = '8px';
+            titleDiv.style.textAlign = 'left';
+            titleDiv.innerText = getGraphTitle();
+            exportWrap.insertBefore(titleDiv, exportWrap.firstChild);
+          }
         },
       });
 
@@ -533,117 +545,248 @@ export default function DataModule() {
     }
   };
 
-  // Render ONLY ONE Chart at a time with Non-Overlapping Angled XAxis Labels
+  // Derive active visualization X-Axis and Y-Axis column names
+  const getVisualizationAxisColumns = () => {
+    if (!datasetSchema || !datasetSchema.columns || datasetSchema.columns.length === 0) {
+      return { xCol: 'வட்டம் (Taluk)', yCol: 'மதிப்பு (Value)' };
+    }
+    const cols = datasetSchema.columns || [];
+    const xCol = cols.find((c) => c.is_taluk_column || c.is_department_column || c.data_type_detected === 'text')?.column_name || Object.keys(datasetSchema.sample_rows?.[0] || {})[0] || 'வட்டம் (Taluk)';
+    const yCol = cols.find((c) => c.data_type_detected === 'number' || c.is_amount_column)?.column_name || Object.keys(datasetSchema.sample_rows?.[0] || {})[1] || 'மதிப்பு (Value)';
+    return { xCol, yCol };
+  };
+
+  const { xCol: activeXCol, yCol: activeYCol } = getVisualizationAxisColumns();
+
+  // Render ONLY ONE Chart at a time with Non-Overlapping Angled XAxis Labels and Axes Titles
   const renderSingleGraph = () => {
     const commonXAxis = (
       <XAxis
         dataKey="name"
-        tick={{ fontSize: 11, fill: 'var(--color-text-secondary)' }}
+        tick={{ fontSize: 10.5, fill: 'var(--color-text-secondary)' }}
         interval={0}
-        angle={-38}
+        angle={-35}
         textAnchor="end"
-        height={75}
+        height={65}
         dx={-4}
         dy={6}
       />
     );
 
+    const commonYAxis = (
+      <YAxis
+        tick={{ fontSize: 11, fill: 'var(--color-text-secondary)' }}
+        label={{
+          value: activeYCol || 'மதிப்பு',
+          angle: -90,
+          position: 'insideLeft',
+          offset: -5,
+          style: { fill: 'var(--color-text-primary)', fontSize: 11, fontWeight: 700, textAnchor: 'middle' },
+        }}
+      />
+    );
+
+    let chartNode = null;
+
+    const isDarkMode = document.documentElement.classList.contains('dark');
+    const labelFill = isDarkMode ? '#f8fafc' : '#0f172a';
+
     switch (graphType) {
       case 'line':
-        return (
-          <ResponsiveContainer width="100%" height={340}>
-            <LineChart data={chartData} margin={{ top: 25, right: 25, left: 10, bottom: 75 }}>
+        chartNode = (
+          <ResponsiveContainer width="100%" height={320}>
+            <LineChart data={chartData} margin={{ top: 25, right: 25, left: 20, bottom: 65 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
               {commonXAxis}
-              <YAxis tick={{ fontSize: 11, fill: 'var(--color-text-secondary)' }} />
-              <Tooltip contentStyle={{ background: 'var(--color-surface-card)', border: '1px solid var(--color-surface-border)', borderRadius: 8, fontSize: '0.8rem' }} />
-              <Line type="monotone" dataKey="value" stroke="#10b981" strokeWidth={3} dot={{ r: 5, fill: '#10b981' }} activeDot={{ r: 7 }} />
+              {commonYAxis}
+              <Tooltip cursor={false} contentStyle={{ background: 'var(--color-surface-card)', border: '1px solid var(--color-surface-border)', borderRadius: 8, fontSize: '0.8rem', color: 'var(--color-text-primary)' }} />
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke="#10b981"
+                strokeWidth={3}
+                isAnimationActive={false}
+                dot={{ r: 5, fill: '#10b981', stroke: '#ffffff', strokeWidth: 1.5 }}
+                activeDot={{ r: 7 }}
+              >
+                <LabelList
+                  dataKey="value"
+                  position="top"
+                  offset={10}
+                  fill={labelFill}
+                  fontSize={11}
+                  fontWeight={700}
+                  formatter={(val) => (typeof val === 'number' ? val.toLocaleString('ta-IN') : val)}
+                />
+              </Line>
             </LineChart>
           </ResponsiveContainer>
         );
+        break;
 
       case 'pie':
-        return (
-          <ResponsiveContainer width="100%" height={340}>
+        chartNode = (
+          <ResponsiveContainer width="100%" height={320}>
             <PieChart>
-              <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={95} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}>
+              <Pie
+                data={chartData}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                outerRadius={95}
+                isAnimationActive={false}
+                label={({ name, value, percent }) => `${name}: ${typeof value === 'number' ? value.toLocaleString('ta-IN') : value} (${(percent * 100).toFixed(0)}%)`}
+              >
                 {chartData.map((_, index) => (
                   <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip contentStyle={{ background: 'var(--color-surface-card)', border: '1px solid var(--color-surface-border)', borderRadius: 8, fontSize: '0.8rem' }} />
+              <Tooltip cursor={false} contentStyle={{ background: 'var(--color-surface-card)', border: '1px solid var(--color-surface-border)', borderRadius: 8, fontSize: '0.8rem', color: 'var(--color-text-primary)' }} />
             </PieChart>
           </ResponsiveContainer>
         );
+        break;
 
       case 'donut':
-        return (
-          <ResponsiveContainer width="100%" height={340}>
+        chartNode = (
+          <ResponsiveContainer width="100%" height={320}>
             <PieChart>
-              <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={95} paddingAngle={3} label>
+              <Pie
+                data={chartData}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                innerRadius={55}
+                outerRadius={95}
+                paddingAngle={3}
+                isAnimationActive={false}
+                label={({ name, value, percent }) => `${name}: ${typeof value === 'number' ? value.toLocaleString('ta-IN') : value} (${(percent * 100).toFixed(0)}%)`}
+              >
                 {chartData.map((_, index) => (
                   <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip contentStyle={{ background: 'var(--color-surface-card)', border: '1px solid var(--color-surface-border)', borderRadius: 8, fontSize: '0.8rem' }} />
+              <Tooltip cursor={false} contentStyle={{ background: 'var(--color-surface-card)', border: '1px solid var(--color-surface-border)', borderRadius: 8, fontSize: '0.8rem', color: 'var(--color-text-primary)' }} />
             </PieChart>
           </ResponsiveContainer>
         );
+        break;
 
       case 'scatter':
-        return (
-          <ResponsiveContainer width="100%" height={340}>
-            <ScatterChart margin={{ top: 25, right: 25, left: 10, bottom: 75 }}>
+        chartNode = (
+          <ResponsiveContainer width="100%" height={320}>
+            <ScatterChart margin={{ top: 25, right: 25, left: 20, bottom: 65 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
               {commonXAxis}
-              <YAxis dataKey="value" tick={{ fontSize: 11, fill: 'var(--color-text-secondary)' }} />
-              <Tooltip contentStyle={{ background: 'var(--color-surface-card)', border: '1px solid var(--color-surface-border)', borderRadius: 8, fontSize: '0.8rem' }} />
-              <Scatter name="Data Distribution" data={chartData} fill="#10b981" />
+              <YAxis
+                dataKey="value"
+                tick={{ fontSize: 11, fill: 'var(--color-text-secondary)' }}
+                label={{
+                  value: activeYCol || 'மதிப்பு',
+                  angle: -90,
+                  position: 'insideLeft',
+                  offset: -5,
+                  style: { fill: 'var(--color-text-primary)', fontSize: 11, fontWeight: 700, textAnchor: 'middle' },
+                }}
+              />
+              <Tooltip cursor={false} contentStyle={{ background: 'var(--color-surface-card)', border: '1px solid var(--color-surface-border)', borderRadius: 8, fontSize: '0.8rem', color: 'var(--color-text-primary)' }} />
+              <Scatter name="Data Distribution" data={chartData} fill="#10b981" isAnimationActive={false}>
+                <LabelList
+                  dataKey="value"
+                  position="top"
+                  offset={10}
+                  fill={labelFill}
+                  fontSize={11}
+                  fontWeight={700}
+                  formatter={(val) => (typeof val === 'number' ? val.toLocaleString('ta-IN') : val)}
+                />
+              </Scatter>
             </ScatterChart>
           </ResponsiveContainer>
         );
+        break;
 
       case 'area':
-        return (
-          <ResponsiveContainer width="100%" height={340}>
-            <AreaChart data={chartData} margin={{ top: 25, right: 25, left: 10, bottom: 75 }}>
+        chartNode = (
+          <ResponsiveContainer width="100%" height={320}>
+            <AreaChart data={chartData} margin={{ top: 25, right: 25, left: 20, bottom: 65 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
               {commonXAxis}
-              <YAxis tick={{ fontSize: 11, fill: 'var(--color-text-secondary)' }} />
-              <Tooltip contentStyle={{ background: 'var(--color-surface-card)', border: '1px solid var(--color-surface-border)', borderRadius: 8, fontSize: '0.8rem' }} />
-              <Area type="monotone" dataKey="value" stroke="#10b981" fill="rgba(16, 185, 129, 0.25)" strokeWidth={2} />
+              {commonYAxis}
+              <Tooltip cursor={false} contentStyle={{ background: 'var(--color-surface-card)', border: '1px solid var(--color-surface-border)', borderRadius: 8, fontSize: '0.8rem', color: 'var(--color-text-primary)' }} />
+              <Area
+                type="monotone"
+                dataKey="value"
+                stroke="#10b981"
+                fill="rgba(16, 185, 129, 0.25)"
+                strokeWidth={2}
+                isAnimationActive={false}
+                dot={{ r: 5, fill: '#10b981', stroke: '#ffffff', strokeWidth: 1.5 }}
+              >
+                <LabelList
+                  dataKey="value"
+                  position="top"
+                  offset={10}
+                  fill={labelFill}
+                  fontSize={11}
+                  fontWeight={700}
+                  formatter={(val) => (typeof val === 'number' ? val.toLocaleString('ta-IN') : val)}
+                />
+              </Area>
             </AreaChart>
           </ResponsiveContainer>
         );
+        break;
 
       case 'bar':
       default:
-        return (
-          <ResponsiveContainer width="100%" height={340}>
-            <BarChart data={chartData} margin={{ top: 25, right: 25, left: 10, bottom: 75 }}>
+        chartNode = (
+          <ResponsiveContainer width="100%" height={320}>
+            <BarChart data={chartData} margin={{ top: 25, right: 25, left: 20, bottom: 65 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
               {commonXAxis}
-              <YAxis tick={{ fontSize: 11, fill: 'var(--color-text-secondary)' }} />
-              <Tooltip contentStyle={{ background: 'var(--color-surface-card)', border: '1px solid var(--color-surface-border)', borderRadius: 8, fontSize: '0.8rem' }} />
-              <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} />
+              {commonYAxis}
+              <Tooltip cursor={false} contentStyle={{ background: 'var(--color-surface-card)', border: '1px solid var(--color-surface-border)', borderRadius: 8, fontSize: '0.8rem', color: 'var(--color-text-primary)' }} />
+              <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                <LabelList
+                  dataKey="value"
+                  position="top"
+                  offset={6}
+                  fill={labelFill}
+                  fontSize={11}
+                  fontWeight={700}
+                  formatter={(val) => (typeof val === 'number' ? val.toLocaleString('ta-IN') : val)}
+                />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         );
+        break;
     }
-  };
 
-  // Derive active visualization X-Axis and Y-Axis column names
-  const getVisualizationAxisColumns = () => {
-    if (!datasetSchema || !datasetSchema.columns || datasetSchema.columns.length === 0) {
-      return { xCol: 'Industry', yCol: 'Applications' };
-    }
-    const cols = datasetSchema.columns || [];
-    const xCol = cols.find((c) => c.is_taluk_column || c.is_department_column || c.data_type_detected === 'text')?.column_name || Object.keys(datasetSchema.sample_rows?.[0] || {})[0] || 'X-Axis';
-    const yCol = cols.find((c) => c.data_type_detected === 'number' || c.is_amount_column)?.column_name || Object.keys(datasetSchema.sample_rows?.[0] || {})[1] || 'Y-Axis';
-    return { xCol, yCol };
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+        {chartNode}
+        {/* Dedicated Centered X-Axis Title with ZERO overlap with angled tick marks */}
+        {['bar', 'line', 'area', 'scatter'].includes(graphType) && (
+          <div
+            style={{
+              textAlign: 'center',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              color: 'var(--color-text-primary)',
+              marginTop: 4,
+              letterSpacing: '0.02em',
+            }}
+          >
+            {activeXCol || 'வட்டம்'}
+          </div>
+        )}
+      </div>
+    );
   };
-
-  const { xCol: activeXCol, yCol: activeYCol } = getVisualizationAxisColumns();
 
   // Extract ONLY the 2 visualization data columns (X-Axis and Y-Axis) for table rendering
   const tableRows = datasetSchema?.sample_rows && datasetSchema.sample_rows.length > 0
@@ -667,33 +810,20 @@ export default function DataModule() {
     <div
       className="animate-fade-in"
       style={{
-        maxWidth: 1600,
+        maxWidth: 1680,
         margin: '0 auto',
         width: '100%',
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        gap: 16,
         overflow: 'hidden',
         minHeight: 0,
         boxSizing: 'border-box',
       }}
     >
-      {/* Module Title Header */}
-      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <h1 className="module-title tamil-text" style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0 }}>
-            {t('data.title')}
-          </h1>
-          <p style={{ fontSize: '0.95rem', color: 'var(--color-text-secondary)', margin: '4px 0 0 0' }} className="tamil-text">
-            {t('data.subtitle')}
-          </p>
-        </div>
-      </div>
-
       {/* ERROR ALERT */}
       {error && (
-        <div style={{ flexShrink: 0, padding: 12, background: '#fee2e2', color: '#991b1b', borderRadius: 8, fontSize: '0.85rem', display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ flexShrink: 0, marginBottom: 8, padding: 10, background: '#fee2e2', color: '#991b1b', borderRadius: 8, fontSize: '0.85rem', display: 'flex', gap: 8, alignItems: 'center' }}>
           <AlertTriangle size={16} />
           <span>{error}</span>
           <button onClick={() => setError(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#991b1b' }}>
@@ -702,34 +832,45 @@ export default function DataModule() {
         </div>
       )}
 
-      {/* MAIN TWO-COLUMN WORKSPACE LAYOUT */}
+      {/* MAIN TWO-COLUMN WORKSPACE LAYOUT (STARTS AT TOP) */}
       <div
         className="data-workspace-grid"
         style={{
           flex: 1,
-          minHeight: 0,
+          minHeight: 'calc(100vh - 100px)',
           display: 'grid',
           gridTemplateColumns: 'minmax(0, 1.4fr) minmax(400px, 1fr)',
-          gap: 20,
+          gap: 16,
           alignItems: 'stretch',
           overflow: 'hidden',
         }}
       >
         {/* ========================================================================= */}
-        {/* LEFT COLUMN: ~65% DATA & VISUALIZATION WORKSPACE (SCROLLABLE)              */}
+        {/* LEFT COLUMN: DATA & VISUALIZATION WORKSPACE (WITH MODULE TITLE)           */}
         {/* ========================================================================= */}
         <div
           className="left-visualization-column"
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 16,
-            height: '100%',
-            minHeight: 0,
+            gap: 12,
             overflowY: 'auto',
-            paddingRight: 6,
+            paddingRight: 4,
+            boxSizing: 'border-box',
+            minHeight: 0,
           }}
         >
+          {/* Module Title Header */}
+          <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
+            <div>
+              <h1 className="module-title tamil-text" style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0 }}>
+                {t('data.title')}
+              </h1>
+              <p style={{ fontSize: '0.86rem', color: 'var(--color-text-secondary)', margin: '2px 0 0 0' }} className="tamil-text">
+                {t('data.subtitle')}
+              </p>
+            </div>
+          </div>
           {/* CONDITION 1: BEFORE FILE UPLOAD — VISUALLY CENTERED UPLOAD CARD */}
           {!selectedDatasetId ? (
             <div
@@ -928,7 +1069,7 @@ export default function DataModule() {
                         style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.88rem' }}
                       >
                         <Download size={14} />
-                        <span>⬇ Download Graph</span>
+                        <span>Download Graph</span>
                         <ChevronDown size={12} />
                       </button>
 
@@ -990,25 +1131,21 @@ export default function DataModule() {
                   </div>
                 </div>
 
-                {/* PURE VISUALIZATION EXPORT TARGET (Title + Chart SVG only) */}
+                {/* PURE VISUALIZATION EXPORT TARGET (Chart SVG with clear axes) */}
                 <div
                   ref={exportContainerRef}
                   className="visualization-export-wrapper"
                   style={{
                     width: '100%',
-                    padding: '12px 16px',
+                    padding: '8px 12px',
                     background: 'var(--color-surface-card)',
                     borderRadius: 10,
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 10,
+                    gap: 6,
                   }}
                 >
-                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--color-text-primary)', paddingBottom: 2 }}>
-                    {getGraphTitle()}
-                  </div>
-
-                  <div ref={chartRef} style={{ width: '100%', minHeight: 330, paddingTop: 4 }}>
+                  <div ref={chartRef} style={{ width: '100%', minHeight: 330, paddingTop: 2 }}>
                     {analyzingStep ? (
                       <div style={{ height: 330, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: '#10b981' }}>
                         <RefreshCw size={20} className="animate-spin" />
@@ -1160,26 +1297,26 @@ export default function DataModule() {
           )}
         </div>
 
-        {/* ========================================================================= */}
-        {/* RIGHT COLUMN: MODERN GLASSMORPHIC AI DATA ASSISTANT PANEL                 */}
-        {/* ========================================================================= */}
+        {/* RIGHT COLUMN: MODERN GLASSMORPHIC AI DATA ASSISTANT PANEL */}
         <div
           className="right-ai-column"
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 14,
-            height: '100%',
-            minHeight: 0,
+            gap: 10,
+            height: 'calc(100vh - 96px)',
+            minHeight: 680,
             overflow: 'hidden',
-            padding: 20,
+            padding: '14px 16px',
             background: 'var(--color-surface-card)',
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
-            borderRadius: 24,
+            borderRadius: 16,
             border: '1px solid rgba(16, 185, 129, 0.25)',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.05), inset 1px 0 rgba(255, 255, 255, 0.6)',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.04)',
             boxSizing: 'border-box',
+            position: 'sticky',
+            top: 0,
           }}
         >
           {/* Glass Header */}
@@ -1188,16 +1325,16 @@ export default function DataModule() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              paddingBottom: 14,
+              paddingBottom: 8,
               borderBottom: '1px solid var(--color-surface-border)',
               flexShrink: 0,
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div
                 style={{
-                  width: 40,
-                  height: 40,
+                  width: 32,
+                  height: 32,
                   borderRadius: '50%',
                   background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.1) 100%)',
                   border: '1px solid rgba(16, 185, 129, 0.3)',
@@ -1207,13 +1344,13 @@ export default function DataModule() {
                   color: '#10b981',
                 }}
               >
-                <Bot size={20} />
+                <Bot size={16} />
               </div>
               <div>
-                <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--color-text-primary)' }} className="tamil-text">
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-text-primary)' }} className="tamil-text">
                   AI Data Assistant
                 </div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)', marginTop: 1 }}>
                   Ask questions in Tamil or English
                 </div>
               </div>
@@ -1225,22 +1362,21 @@ export default function DataModule() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6,
-                padding: '6px 14px',
+                gap: 4,
+                padding: '4px 10px',
                 borderRadius: 9999,
                 background: 'rgba(16, 185, 129, 0.08)',
                 border: '1px solid rgba(16, 185, 129, 0.25)',
                 color: '#10b981',
-                fontSize: '0.88rem',
+                fontSize: '0.78rem',
                 fontWeight: 600,
                 cursor: 'pointer',
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.05)',
+                transition: 'all 0.15s ease',
               }}
               className="hover:bg-emerald-500/20 hover:border-emerald-500/40 tamil-text"
               title="Start a new chat session"
             >
-              <Plus size={14} />
+              <Plus size={12} />
               <span>New Chat</span>
             </button>
           </div>
@@ -1254,9 +1390,10 @@ export default function DataModule() {
               overflowY: 'auto',
               display: 'flex',
               flexDirection: 'column',
-              gap: 10,
+              gap: 14,
               paddingRight: 4,
               paddingTop: 4,
+              paddingBottom: 4,
             }}
           >
             {chatMessages.map((msg) => (
@@ -1264,7 +1401,7 @@ export default function DataModule() {
                 key={msg.id}
                 style={{
                   alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
-                  maxWidth: '88%',
+                  maxWidth: '90%',
                   width: 'fit-content',
                   display: 'flex',
                   flexDirection: 'column',
@@ -1274,9 +1411,9 @@ export default function DataModule() {
               >
                 <div
                   style={{
-                    padding: msg.sender === 'user' ? '12px 16px' : '14px 16px',
-                    borderRadius: msg.sender === 'user' ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
-                    fontSize: '1rem',
+                    padding: msg.sender === 'user' ? '9px 14px' : '11px 15px 9px 15px',
+                    borderRadius: msg.sender === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                    fontSize: '0.92rem',
                     background:
                       msg.sender === 'user'
                         ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
@@ -1284,8 +1421,8 @@ export default function DataModule() {
                     color: msg.sender === 'user' ? '#ffffff' : 'var(--color-text-primary)',
                     boxShadow:
                       msg.sender === 'user'
-                        ? '0 4px 14px rgba(16, 185, 129, 0.3)'
-                        : '0 4px 16px rgba(0, 0, 0, 0.04)',
+                        ? '0 3px 10px rgba(16, 185, 129, 0.25)'
+                        : '0 2px 10px rgba(0, 0, 0, 0.04)',
                     border: msg.sender === 'user' ? 'none' : '1px solid rgba(16, 185, 129, 0.15)',
                     backdropFilter: msg.sender === 'ai' ? 'blur(8px)' : 'none',
                     boxSizing: 'border-box',
@@ -1298,12 +1435,12 @@ export default function DataModule() {
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word',
                       overflowWrap: 'anywhere',
-                      lineHeight: 1.6,
-                      fontSize: '1rem',
+                      lineHeight: 1.55,
+                      fontSize: '0.92rem',
                     }}
                     className="tamil-text"
                   >
-                    {msg.text}
+                    {msg.text.trim()}
                   </div>
 
                   {/* Timestamp & Micro Actions Footer */}
@@ -1312,36 +1449,36 @@ export default function DataModule() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      marginTop: 8,
+                      marginTop: 6,
                       gap: 8,
-                      borderTop: msg.sender === 'ai' ? '1px solid rgba(16, 185, 129, 0.1)' : 'none',
+                      borderTop: msg.sender === 'ai' ? '1px solid rgba(16, 185, 129, 0.12)' : 'none',
                       paddingTop: msg.sender === 'ai' ? 6 : 0,
                       flexWrap: 'wrap',
                     }}
                   >
-                    <span style={{ fontSize: '0.88rem', opacity: msg.sender === 'user' ? 0.85 : 0.7 }}>
+                    <span style={{ fontSize: '0.74rem', opacity: msg.sender === 'user' ? 0.85 : 0.65 }}>
                       {msg.timestamp}
                     </span>
 
                     {msg.sender === 'ai' && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <button
                           onClick={() => handleCopyMessage(msg.text, msg.id)}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: 4,
-                            padding: '3px 10px',
+                            gap: 3,
+                            padding: '2px 8px',
                             borderRadius: 9999,
                             background: 'rgba(16, 185, 129, 0.08)',
                             border: '1px solid rgba(16, 185, 129, 0.2)',
                             color: '#10b981',
-                            fontSize: '0.88rem',
+                            fontSize: '0.74rem',
                             cursor: 'pointer',
                           }}
                           title="Copy text"
                         >
-                          {copiedMessageId === msg.id ? <Check size={12} /> : <Copy size={12} />}
+                          {copiedMessageId === msg.id ? <Check size={11} /> : <Copy size={11} />}
                           <span>{copiedMessageId === msg.id ? 'Copied' : 'Copy'}</span>
                         </button>
                         <button
@@ -1349,18 +1486,18 @@ export default function DataModule() {
                           style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: 4,
-                            padding: '3px 10px',
+                            gap: 3,
+                            padding: '2px 8px',
                             borderRadius: 9999,
                             background: 'rgba(16, 185, 129, 0.08)',
                             border: '1px solid rgba(16, 185, 129, 0.2)',
                             color: '#10b981',
-                            fontSize: '0.88rem',
+                            fontSize: '0.74rem',
                             cursor: 'pointer',
                           }}
                           title="Share insight"
                         >
-                          <Share2 size={12} />
+                          <Share2 size={11} />
                           <span>Share</span>
                         </button>
                       </div>
@@ -1398,44 +1535,42 @@ export default function DataModule() {
               flexShrink: 0,
               display: 'flex',
               flexDirection: 'column',
-              gap: 10,
-              paddingTop: 10,
+              gap: 8,
+              paddingTop: 8,
               borderTop: '1px solid var(--color-surface-border)',
             }}
           >
-            {/* RECOMMENDED PROMPTS (ONLY SHOWN FIRST TIME BEFORE TEXTING/MESSAGING STARTS) */}
+            {/* RECOMMENDED PROMPTS (SLIM SIZE) */}
             {!chatMessages.some((msg) => msg.sender === 'user') && !chatInput.trim() && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, letterSpacing: '0.04em', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: 1 }}>
                   Recommended Prompts
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {RECOMMENDED_PROMPTS.map((prompt) => (
                     <button
                       key={prompt.id}
                       onClick={() => handleSendChatMessage(prompt.query)}
                       style={{
-                        fontSize: '0.88rem',
-                        fontWeight: 600,
-                        padding: '8px 14px',
-                        borderRadius: 9999,
+                        fontSize: '0.78rem',
+                        fontWeight: 500,
+                        padding: '5px 12px',
+                        borderRadius: 8,
                         border: '1px solid rgba(16, 185, 129, 0.25)',
                         background: 'var(--color-surface-hover)',
-                        backdropFilter: 'blur(8px)',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 8,
+                        gap: 6,
                         color: 'var(--color-text-primary)',
                         textAlign: 'left',
                         width: '100%',
                         cursor: 'pointer',
-                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.02)',
+                        transition: 'all 0.15s ease',
                       }}
                       className="hover:border-emerald-500 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30"
                       title={prompt.query}
                     >
-                      <span style={{ fontSize: '1rem' }}>{prompt.icon}</span>
+                      <span style={{ fontSize: '0.85rem' }}>{prompt.icon}</span>
                       <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{prompt.label}</span>
                     </button>
                   ))}
@@ -1443,20 +1578,21 @@ export default function DataModule() {
               </div>
             )}
 
-            {/* FLOATING ROUNDED PILL INPUT DOCK & VOICE CONTROLS */}
+            {/* FLOATING ROUNDED PILL INPUT DOCK & VOICE CONTROLS (VERTICALLY CENTERED) */}
             <div
               style={{
                 flexShrink: 0,
                 marginTop: 2,
-                padding: '6px 8px 6px 14px',
-                borderRadius: chatInput.length > 45 || chatInput.indexOf('\n') !== -1 ? 18 : 9999,
+                padding: '4px 6px 4px 12px',
+                borderRadius: chatInput.length > 45 || chatInput.indexOf('\n') !== -1 ? 14 : 9999,
                 background: 'var(--color-surface-input)',
-                backdropFilter: 'blur(12px)',
                 border: '1.5px solid rgba(16, 185, 129, 0.35)',
-                boxShadow: '0 8px 24px rgba(16, 185, 129, 0.1)',
+                boxShadow: '0 4px 16px rgba(16, 185, 129, 0.08)',
                 display: 'flex',
-                alignItems: 'flex-end',
-                gap: 8,
+                alignItems: 'center',
+                gap: 6,
+                minHeight: 40,
+                boxSizing: 'border-box',
                 transition: 'border-radius 0.2s ease',
               }}
             >
@@ -1467,14 +1603,14 @@ export default function DataModule() {
                 onChange={(e) => {
                   setChatInput(e.target.value);
                   e.target.style.height = 'auto';
-                  e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     handleSendChatMessage();
                     if (chatInputRef.current) {
-                      chatInputRef.current.style.height = '32px';
+                      chatInputRef.current.style.height = '22px';
                     }
                   }
                 }}
@@ -1485,7 +1621,7 @@ export default function DataModule() {
                   background: 'transparent',
                   border: 'none',
                   outline: 'none',
-                  fontSize: '1rem',
+                  fontSize: '0.9rem',
                   color: 'var(--color-text-primary)',
                   fontFamily: "'Noto Sans Tamil', 'Inter', sans-serif",
                   resize: 'none',
@@ -1493,10 +1629,11 @@ export default function DataModule() {
                   wordBreak: 'break-word',
                   overflowWrap: 'break-word',
                   overflowY: 'auto',
-                  height: '32px',
-                  maxHeight: '120px',
-                  lineHeight: 1.45,
-                  padding: '6px 0',
+                  height: '22px',
+                  maxHeight: '100px',
+                  lineHeight: '22px',
+                  padding: '1px 0',
+                  margin: 0,
                 }}
               />
 

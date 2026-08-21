@@ -250,7 +250,8 @@ class CollectorateRAGEngine:
             conn.close()
 
     def _generate_analytical_document_answer(self, doc: Dict[str, Any], query: str, officer_id: str) -> str:
-        """Generate high-precision analytical response when analyzing an attached document."""
+        """Generate high-precision, clean, Gemini-style analytical response when analyzing an attached document."""
+        import re
         fname = doc.get("file_name", "ஆவணம்")
         full_text = doc.get("full_text", "")
         fp = doc.get("fingerprint", {}) or {}
@@ -258,46 +259,81 @@ class CollectorateRAGEngine:
         schemes = fp.get("detected_schemes", [])
         entities = fp.get("key_entities", [])
         
-        # Clean query
+        # Clean text from page delimiters (e.g. '--- [Page 1] ---') and empty lines
+        raw_lines = full_text.splitlines()
+        cleaned_lines = []
+        for l in raw_lines:
+            s = re.sub(r'^-+\s*\[Page\s*\d+\]\s*-+', '', l).strip()
+            s = re.sub(r'^-{3,}', '', s).strip()
+            if s and len(s) > 2 and not s.startswith('---'):
+                cleaned_lines.append(s)
+
         q_lower = query.lower()
         is_about = any(k in q_lower for k in ["பற்றியது", "about", "விவரம்", "what is", "விளக்கம்", "தலைப்பு"])
         is_action = any(k in q_lower for k in ["நடவடிக்கை", "action", "தேவை", "பரிந்துரை", "செய்ய வேண்டும்", "steps"])
-        is_officer = any(k in q_lower for k in ["அலுவலர்", "officer", "பொறுப்பு", "who", "துறை"])
-
-        lines = [line.strip() for line in full_text.splitlines() if line.strip()]
-        first_few = " ".join(lines[:4]) if lines else full_text[:300]
+        is_keypoints = any(k in q_lower for k in ["முக்கிய குறிப்புகள்", "குறிப்புகள்", "key points", "points", "சிறப்பம்ச"])
+        is_dates = any(k in q_lower for k in ["தேதி", "date", "காலக்கெடு", "deadline", "காலம்"])
 
         parts = []
-        parts.append(f"📄 **ஆவணப் பகுப்பாய்வு அறிக்கை (`{fname}`):**\n")
 
-        # 1. Purpose / Summary
-        parts.append("📌 **ஆவணத்தின் முக்கிய நோக்கம் / பொருள்:**")
-        if first_few:
-            parts.append(f"• {first_few[:350]}...\n")
+        if is_dates:
+            date_pattern = re.compile(r'(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{1,2}\s+(?:ஜனவரி|பிப்ரவரி|மார்ச்|ஏப்ரல்|மே|ஜூன்|ஜூலை|ஆகஸ்ட்|செப்டம்பர்|அக்டோபர்|நவம்பர்|டிசம்பர்|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})', re.IGNORECASE)
+            found_dates = []
+            for line in cleaned_lines:
+                for match in date_pattern.findall(line):
+                    if match not in found_dates:
+                        found_dates.append(match)
+
+            parts.append(f"**முக்கிய தேதிகள் மற்றும் காலக்கெடு ({fname})**\n")
+            if found_dates:
+                for d in found_dates[:6]:
+                    parts.append(f"• {d}")
+            else:
+                parts.append("இந்த ஆவணத்தில் குறிப்பிட்ட காலக்கெடு அல்லது தேதிகள் நேரடியாகக் குறிப்பிடப்படவில்லை. துறைசார் வழக்கமான நடைமுறைகளின்படி உரிய காலத்திற்குள் நடவடிக்கை மேற்கொள்ளப்பட வேண்டும்.")
+
+        elif is_keypoints:
+            parts.append(f"**ஆவணத்தின் முக்கிய குறிப்புகள் ({fname})**\n")
+            if len(cleaned_lines) >= 3:
+                for line in cleaned_lines[:6]:
+                    parts.append(f"• {line}")
+            else:
+                parts.append(f"• வகைப்பாடு: {content_type}")
+                if schemes:
+                    parts.append(f"• திட்டங்கள்: {', '.join(schemes)}")
+                if entities:
+                    parts.append(f"• முக்கிய பிரிவுகள்: {', '.join(entities[:5])}")
+                parts.append("• ஈரோடு மாவட்ட ஆட்சியரக கோப்பு பதிவேட்டில் பதிவு செய்யப்பட்டு பரிசீலனையில் உள்ளது.")
+
+        elif is_action:
+            parts.append(f"**தேவைப்படும் தொடர் நடவடிக்கைகள் ({fname})**\n")
+            parts.append("1. **சரிபார்த்தல்:** ஆவணத்தில் உள்ள விவரங்களை தொடர்புடைய வட்டாட்சியர் அல்லது துறை அலுவலக கோப்புகளுடன் ஒப்பிட்டு சரிபார்த்தல்.")
+            parts.append("2. **அலுவல் குறிப்பு தயாரிப்பு:** மாவட்ட ஆட்சியரின் பார்வைக்கு சமர்ப்பிக்க குறிப்பு தாள் (Note Sheet) தயார் செய்தல்.")
+            parts.append("3. **பதில் அல்லது ஆணை வெளியீடு:** உரிய வழிகாட்டுதலின்படி பதில் கடிதம், சுற்றறிக்கை அல்லது ஆணை ஆவணம் உருவாக்குதல்.")
+
         else:
-            parts.append(f"• ஈரோடு மாவட்ட நிர்வாகம் தொடர்பான `{content_type}` ஆவணம்.\n")
+            # Default / About summary
+            parts.append(f"**ஆவணப் பகுப்பாய்வு சுருக்கம் ({fname})**\n")
+            
+            if cleaned_lines:
+                snippet = " ".join(cleaned_lines[:5])
+                if len(snippet) > 400:
+                    snippet = snippet[:400] + "..."
+                parts.append(f"**பொருள் மற்றும் சுருக்கம்:**\n{snippet}\n")
+            else:
+                parts.append(f"**பொருள் மற்றும் சுருக்கம்:**\nஈரோடு மாவட்ட நிர்வாகம் தொடர்பான `{content_type}` ஆவணம்.\n")
 
-        # 2. Identified Category & Schemes
-        if schemes or entities or content_type:
-            parts.append("🏛️ **துறை / வகைப்பாடு:**")
-            parts.append(f"• வகை: **{content_type.upper()}**")
+            parts.append("**துறை மற்றும் வகைப்பாடு:**")
+            parts.append(f"• வகை: **{content_type}**")
             if schemes:
-                parts.append(f"• தொடர்புடைய திட்டங்கள் / தலைப்புகள்: {', '.join(schemes)}")
+                parts.append(f"• தொடர்புடைய திட்டங்கள்: {', '.join(schemes)}")
             if entities:
                 parts.append(f"• குறிப்பிடப்பட்டுள்ள முக்கிய பிரிவுகள்: {', '.join(entities[:5])}")
             parts.append("")
 
-        # 3. Action Points / Next Steps
-        parts.append("📋 **தேவைப்படும் தொடர் நடவடிக்கைகள் (Action Points):**")
-        if is_action or is_about or not lines:
-            parts.append("1. **சரிபார்த்தல்:** ஆவணத்தில் உள்ள விவரங்களை தொடர்புடைய வட்டாட்சியர் / துறை அலுவலக கோப்புகளுடன் ஒப்பிட்டு சரிபார்த்தல்.")
-            parts.append("2. **அலுவல் குறிப்பு (Note Sheet) தயாரிப்பு:** மாவட்ட ஆட்சியரின் பார்வைக்கு முன்வைக்க குறிப்பு தாள் தயாரித்தல்.")
-            parts.append("3. **பதில் வரைவு அல்லது சுற்றறிக்கை:** உரிய படிவத்தில் (Docx/PDF) பதில் அல்லது ஆணை ஆவணம் உருவாக்குதல்.")
-        else:
-            for idx, line in enumerate(lines[:3], start=1):
-                parts.append(f"{idx}. {line[:120]}")
-
-        parts.append("\n💡 *மேற்கண்ட ஆவணத்தின்படி வரைவு அறிக்கை அல்லது DOCX ஆவணம் உருவாக்க 'Official Content' பகுதியை பயன்படுத்தலாம்.*")
+            parts.append("**பரிந்துரைக்கப்படும் தொடர் நடவடிக்கைகள்:**")
+            parts.append("1. தொடர்புடைய துறை கோப்புகளுடன் ஆவண விவரங்களை ஒப்பிட்டு சரிபார்த்தல்.")
+            parts.append("2. மாவட்ட ஆட்சியரின் ஒப்புதலுக்காக குறிப்பு தாள் (Note Sheet) தயாரித்தல்.")
+            parts.append("3. தேவையான பதில் அல்லது சுற்றறிக்கை ஆவணத்தை வரைவு செய்தல்.")
 
         return "\n".join(parts)
 
@@ -353,12 +389,12 @@ class CollectorateRAGEngine:
             return {
                 "answer": (
                     f"வணக்கம் அலுவலர் {officer_id}!\n\n"
-                    f"ஈரோடு மாவட்ட ஆட்சியரக AI நிர்வாக உதவியாளருக்கு தங்களை வரவேற்கிறோம். நான் தங்களுக்கு எவ்வாறு உதவ முடியும்?\n\n"
-                    f"🏛️ **நான் உதவக்கூடிய முக்கிய பகுதிகள்:**\n"
-                    f"• **ஆவண பகுப்பாய்வு & வினா-விடை:** கோப்புகளை இணைத்து (PDF, Word, Scan) சுருக்கம் மற்றும் ஆலோசனைகளைப் பெறலாம்.\n"
-                    f"• **வருவாய்த்துறை & பட்டா வழிகாட்டுதல்கள்:** பட்டா மாறுதல், நில அளவீடு விதிமுறைகள்.\n"
-                    f"• **சமூக நல திட்டங்கள்:** முதியோர்/விதவை ஓய்வூதியம், மாற்றுத்திறனாளி உதவித்தொகை.\n"
-                    f"• **அலுவல் ஆணைகள் & வரைவுகள்:** செய்தி வெளியீடு, சுற்றறிக்கை, கூட்டக் குறிப்புகள் தயாரிப்பு.\n\n"
+                    f"ஈரோடு மாவட்ட ஆட்சியரக AI நிர்வாக உதவியாளர் சேவைக்கு வரவேற்கிறோம். நான் தங்களுக்கு எவ்வாறு உதவ முடியும்?\n\n"
+                    f"**உதவக்கூடிய முக்கிய பகுதிகள்:**\n"
+                    f"• **ஆவண பகுப்பாய்வு & வினா-விடை:** கோப்புகளை இணைத்து சுருக்கம் மற்றும் ஆலோசனைகளைப் பெறலாம்.\n"
+                    f"• **வருவாய்த்துறை & பட்டா வழிகாட்டுதல்கள்:** பட்டா மாறுதல் மற்றும் நில அளவீடு விதிமுறைகள்.\n"
+                    f"• **சமூக நல திட்டங்கள்:** முதியோர், விதவை மற்றும் மாற்றுத்திறனாளி உதவித்தொகை திட்டங்கள்.\n"
+                    f"• **அலுவல் ஆணைகள் & வரைவுகள்:** செய்தி வெளியீடு, சுற்றறிக்கை மற்றும் கூட்டக் குறிப்புகள் தயாரிப்பு.\n\n"
                     f"தங்கள் வினவலை தட்டச்சு செய்யலாம் அல்லது ஆவணத்தை பதிவேற்றலாம்."
                 ),
                 "sources": ["Erode Collectorate Master Knowledge Base"],
@@ -371,9 +407,9 @@ class CollectorateRAGEngine:
             try:
                 system_prompt = (
                     "You are an expert AI administrative assistant for the Erode District Collectorate (ஈரோடு மாவட்ட ஆட்சியரகம்), Tamil Nadu. "
-                    "Provide clear, professional, well-structured, and helpful answers in pure official Tamil (தமிழ்). "
-                    "Always base your answers strictly on the provided Collectorate Guidelines, Attached Document, and Database Context. "
-                    "If a document is attached, directly answer the officer's specific question regarding that document with key details, summary, and action items."
+                    "Provide clear, concise, professional, and well-structured answers in pure official Tamil (தமிழ்) formatted cleanly like Google Gemini. "
+                    "Do NOT use emojis. Use clean markdown formatting (paragraphs, bold headings, bullet points). "
+                    "Always base your answers strictly on the provided Collectorate Guidelines, Attached Document, and Database Context."
                 )
                 user_prompt = (
                     f"Context / ஆவண தகவல்கள்:\n{combined_context if combined_context else 'பொதுவான மாவட்ட நிர்வாக நடைமுறைகள்'}\n\n"
@@ -416,11 +452,11 @@ class CollectorateRAGEngine:
         if admin_guidelines:
             g = admin_guidelines[0]
             answer = (
-                f"📌 **{g['title']}**\n\n"
+                f"**{g['title']}**\n\n"
                 f"{g['content_ta']}\n\n"
             )
             if petitions:
-                answer += f"📂 **தற்போது பரிசீலனையில் உள்ள தொடர்புடைய மனுக்கள் ({len(petitions)}):**\n"
+                answer += f"**தற்போது பரிசீலனையில் உள்ள தொடர்புடைய மனுக்கள் ({len(petitions)}):**\n"
                 for p in petitions:
                     answer += f"• **{p['source_id']}** ({p['department']}) - நிலை: {p['status']}\n"
             return {
@@ -434,8 +470,8 @@ class CollectorateRAGEngine:
             "answer": (
                 f"வணக்கம் அலுவலர் {officer_id}!\n\n"
                 f"ஈரோடு மாவட்ட ஆட்சியரக தகவல் களஞ்சியத்தில் தங்கள் வினவல் ('{message}') பெறப்பட்டது.\n\n"
-                f"🏛️ **மாவட்ட நிர்வாக வழிகாட்டி:**\n"
-                f"• வருவாய்த்துறை பட்டா/நில அளவீடு விவரங்கள்\n"
+                f"**மாவட்ட நிர்வாக வழிகாட்டி:**\n"
+                f"• வருவாய்த்துறை பட்டா மற்றும் நில அளவீடு விவரங்கள்\n"
                 f"• சமூக பாதுகாப்பு முதியோர்/விதவை ஓய்வூதிய திட்டங்கள்\n"
                 f"• குடிநீர், சாலை மற்றும் பொதுப்பணித்துறை மனுக்கள்\n"
                 f"• அரசு இ-சேவை சான்றிதழ் நடைமுறைகள்\n\n"

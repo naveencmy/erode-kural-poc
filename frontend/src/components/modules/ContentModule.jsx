@@ -102,7 +102,7 @@ export default function ContentModule() {
       const res = await generateContent(selectedTemplate, { subject, details }, officerId);
       setResult(res);
       setEditedText(res.generated_text);
-      setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+      setIsFormOpen(false);
     } catch (err) {
       setError(err.message || 'உள்ளடக்கம் உருவாக்குவதில் பிழை ஏற்பட்டது.');
     } finally {
@@ -129,27 +129,55 @@ export default function ContentModule() {
       // Parse editedText into structured body paragraphs safely
       const rawParas = editedText.split('\n\n').map(p => p.trim()).filter(Boolean);
       const cleanBodyParas = [];
+      let detectedFooter = null;
+      const defaultFooter = 'வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்.';
 
       for (const p of rawParas) {
-        const isShort = p.length < 110;
-        if (isShort && (
-          p.startsWith('செ.வெ.எண்') ||
-          p.startsWith('சுற்றறிக்கை எண்') ||
-          p.startsWith('குறிப்பாணை எண்') ||
-          p.startsWith('எண்:') ||
-          p.startsWith('நாள்') ||
-          p === '----' || p === '---' || p.startsWith('----------------') || p.startsWith('========') ||
-          p === 'அவர்களின் செய்திக்குறிப்பு-' ||
-          p === 'அவர்களின் சுற்றறிக்கை-' ||
-          p === 'அவர்களின் அலுவலகக் குறிப்பாணை-' ||
-          p === 'ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,' ||
-          p === 'ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,\nஅவர்களின் செய்திக்குறிப்பு-' ||
-          p.startsWith('வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர்') ||
-          p.startsWith('வெளியீடு - செய்தி மக்கள் தொடர்பு அலுவலர்')
-        )) {
-          continue;
+        const lines = p.split('\n').map(l => l.trim()).filter(Boolean);
+        const keptLines = [];
+        for (const line of lines) {
+          const lineNoNum = line.replace(/^\d+[\.\)]\s*/, '').trim();
+          const isShort = lineNoNum.length < 140;
+
+          if (isShort && (
+            lineNoNum.startsWith('செ.வெ.எண்') ||
+            lineNoNum.startsWith('சுற்றறிக்கை எண்') ||
+            lineNoNum.startsWith('குறிப்பாணை எண்') ||
+            lineNoNum.startsWith('எண்:') ||
+            lineNoNum.startsWith('நாள்') ||
+            lineNoNum === '----' || lineNoNum === '---' || lineNoNum.startsWith('----------------') || lineNoNum.startsWith('========') ||
+            lineNoNum === 'அவர்களின் செய்திக்குறிப்பு-' ||
+            lineNoNum === 'அவர்களின் சுற்றறிக்கை-' ||
+            lineNoNum === 'அவர்களின் அலுவலகக் குறிப்பாணை-' ||
+            lineNoNum === 'ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,' ||
+            lineNoNum === 'ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,\nஅவர்களின் செய்திக்குறிப்பு-'
+          )) {
+            continue;
+          }
+
+          if (isShort && (
+            lineNoNum.startsWith('வெளியீடு') ||
+            lineNoNum.includes('செய்தி மக்கள் தொடர்பு அலுவலர்') ||
+            lineNoNum.startsWith('இப்படிக்கு')
+          )) {
+            detectedFooter = lineNoNum;
+            continue;
+          }
+
+          keptLines.push(line);
         }
-        cleanBodyParas.push(p);
+        if (keptLines.length > 0) {
+          cleanBodyParas.push(keptLines.join('\n'));
+        }
+      }
+
+      let finalPdfFooter = defaultFooter;
+      if (detectedFooter) {
+        const normDet = detectedFooter.replace(/[\s\-_,.:;]/g, '');
+        const normDef = defaultFooter.replace(/[\s\-_,.:;]/g, '');
+        if (normDet !== normDef) {
+          finalPdfFooter = detectedFooter;
+        }
       }
 
       let refLabel = `செ.வெ.எண் - ${result.ref_number}`;
@@ -259,7 +287,7 @@ export default function ContentModule() {
           </div>
 
           <div style="page-break-inside: avoid; break-inside: avoid; margin-top: 25px; border-top: 1.5px solid #000000; padding-top: 10px;">
-            <div style="font-weight: bold; font-size: 10.5pt; color: #000000;">வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்.</div>
+            <div style="font-weight: bold; font-size: 10.5pt; color: #000000;">${finalPdfFooter}</div>
           </div>
         `;
       }
@@ -501,8 +529,6 @@ export default function ContentModule() {
                   <span style={{ fontWeight: 600, color: activeTmpl.color }}>{result.ref_number}</span>
                   <span>·</span>
                   <span>{result.date_display}</span>
-                  <span>·</span>
-                  <SourceBadge source={result.source} />
                   {isEditing && (
                     <span style={{
                       padding: '1px 8px', borderRadius: 10, fontSize: '0.68rem', fontWeight: 700,

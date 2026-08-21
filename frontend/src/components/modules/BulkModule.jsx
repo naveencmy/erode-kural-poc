@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import useAppStore from '../../stores/appStore';
 import { fetchBulkItems, fetchStats, ingestFile } from '../../lib/api';
@@ -18,6 +18,9 @@ import {
   ChevronDown,
   Eye,
   RotateCcw,
+  Check,
+  X,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 // Safely parse date from item fields
@@ -147,6 +150,150 @@ const collectorateDepartments = [
   },
 ];
 
+// Custom Professional Floating Dropdown Component (Fast 0ms response, Fixed Anchor, Sleek Scrollbar)
+function CustomFilterDropdown({
+  label,
+  value,
+  options,
+  onSelect,
+  isOpen,
+  onToggle,
+  dropdownRef,
+  placeholder,
+  hasSearch = false,
+  searchPlaceholder = 'Search...',
+  searchValue = '',
+  onSearchChange,
+  width = 150,
+  dropdownWidth = width,
+  renderOption,
+}) {
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative', flex: `0 0 ${width}px`, width, boxSizing: 'border-box' }}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="filter-select btn btn-ghost btn-sm"
+        style={{
+          width: '100%',
+          height: 38,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 10px',
+          borderRadius: 8,
+          border: value ? '1.5px solid #10b981' : '1px solid var(--color-surface-border)',
+          background: value ? 'rgba(16, 185, 129, 0.08)' : 'var(--color-surface-input)',
+          color: value ? '#10b981' : 'var(--color-text-primary)',
+          fontWeight: value ? 600 : 500,
+          fontSize: '0.86rem',
+          cursor: 'pointer',
+          textAlign: 'left',
+          boxSizing: 'border-box',
+          gap: 6,
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+          {label || placeholder}
+        </span>
+        <ChevronDown
+          size={14}
+          style={{
+            flexShrink: 0,
+            transform: isOpen ? 'rotate(180deg)' : 'none',
+            transition: 'transform 0.15s ease',
+            color: value ? '#10b981' : 'var(--color-text-secondary)',
+          }}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            width: dropdownWidth,
+            maxHeight: 280,
+            overflowY: 'auto',
+            background: 'var(--color-surface-card)',
+            border: '1px solid var(--color-surface-border)',
+            borderRadius: 10,
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.18)',
+            zIndex: 100,
+            padding: '6px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            boxSizing: 'border-box',
+          }}
+        >
+          {hasSearch && (
+            <div style={{ padding: '4px 6px', borderBottom: '1px solid var(--color-surface-border)', marginBottom: 4 }}>
+              <input
+                type="text"
+                placeholder={searchPlaceholder}
+                value={searchValue}
+                onChange={(e) => onSearchChange(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '6px 10px',
+                  borderRadius: 6,
+                  border: '1px solid var(--color-surface-border)',
+                  background: 'var(--color-surface-input)',
+                  fontSize: '0.84rem',
+                  color: 'var(--color-text-primary)',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+          )}
+
+          {options.map((opt) => {
+            const isSelected = value === opt.value;
+            return (
+              <button
+                key={opt.value ?? 'all'}
+                type="button"
+                onClick={() => onSelect(opt.value)}
+                style={{
+                  padding: '7px 10px',
+                  borderRadius: 6,
+                  background: isSelected ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
+                  color: isSelected ? '#10b981' : 'var(--color-text-primary)',
+                  fontWeight: isSelected ? 700 : 450,
+                  border: 'none',
+                  textAlign: 'left',
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                }}
+                className="hover:bg-emerald-500/10"
+                title={opt.label}
+              >
+                {renderOption ? (
+                  renderOption(opt, isSelected)
+                ) : (
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {opt.label}
+                  </span>
+                )}
+                {isSelected && <Check size={14} style={{ flexShrink: 0, color: '#10b981' }} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BulkModule() {
   const { t, i18n } = useTranslation();
   const { appConfig } = useAppStore();
@@ -158,7 +305,7 @@ export default function BulkModule() {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
-  // Filters
+  // Filter Values
   const [statusFilter, setStatusFilter] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
@@ -167,26 +314,51 @@ export default function BulkModule() {
   const [monthFilter, setMonthFilter] = useState('');
   const [yearFilter, setYearFilter] = useState('');
 
+  // Dropdown Open States
+  const [deptOpen, setDeptOpen] = useState(false);
+  const [deptSearch, setDeptSearch] = useState('');
+  const [priorityOpen, setPriorityOpen] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [monthOpen, setMonthOpen] = useState(false);
+  const [yearOpen, setYearOpen] = useState(false);
+
+  // Dropdown Container Refs for Click-Outside
+  const deptDropdownRef = useRef(null);
+  const priorityDropdownRef = useRef(null);
+  const statusDropdownRef = useRef(null);
+  const monthDropdownRef = useRef(null);
+  const yearDropdownRef = useRef(null);
+
+  // Close all floating dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (deptDropdownRef.current && !deptDropdownRef.current.contains(e.target)) setDeptOpen(false);
+      if (priorityDropdownRef.current && !priorityDropdownRef.current.contains(e.target)) setPriorityOpen(false);
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target)) setStatusOpen(false);
+      if (monthDropdownRef.current && !monthDropdownRef.current.contains(e.target)) setMonthOpen(false);
+      if (yearDropdownRef.current && !yearDropdownRef.current.contains(e.target)) setYearOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Load workflow items once on mount / upload — enables lightning-fast 0ms client-side filtering
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const [statsData, itemsData] = await Promise.all([
         fetchStats(),
-        fetchBulkItems({
-          status: statusFilter || undefined,
-          department: deptFilter || undefined,
-          priority: priorityFilter || undefined,
-        }),
+        fetchBulkItems({ limit: 100 }),
       ]);
       setStats(statsData);
-      setItems(itemsData.items || []);
+      setItems(itemsData.items || itemsData || []);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Failed to load bulk workflow data');
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, deptFilter, priorityFilter]);
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -234,6 +406,17 @@ export default function BulkModule() {
       dynamicMonths: sortedMonths.length > 0 ? sortedMonths : monthList,
     };
   }, [items]);
+
+  // Filter department list by search query
+  const filteredDeptList = useMemo(() => {
+    if (!deptSearch.trim()) return collectorateDepartments;
+    const q = deptSearch.toLowerCase().trim();
+    return collectorateDepartments.filter((d) =>
+      d.nameEn.toLowerCase().includes(q) ||
+      d.nameTa.toLowerCase().includes(q) ||
+      d.value.toLowerCase().includes(q)
+    );
+  }, [deptSearch]);
 
   // Combined client-side filter (Search -> Year -> Month -> Date -> Dept -> Priority -> Status)
   const filteredItems = items.filter((item) => {
@@ -516,68 +699,59 @@ export default function BulkModule() {
         </div>
 
         {/* 1. Year Filter */}
-        <div style={{ position: 'relative', flex: '0 0 135px', width: 135, boxSizing: 'border-box' }}>
-          <select
-            value={yearFilter}
-            onChange={(e) => setYearFilter(e.target.value)}
-            className="filter-select btn btn-ghost btn-sm"
-            style={{
-              width: '100%',
-              height: 38,
-              paddingRight: 24,
-              appearance: 'none',
-              cursor: 'pointer',
-              color: '#000000',
-              textOverflow: 'ellipsis',
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-              boxSizing: 'border-box',
-              fontSize: '0.95rem',
-            }}
-          >
-            <option value="" style={{ color: '#000000', backgroundColor: '#ffffff' }}>
-              {t('bulk.filter_by_year', 'Filter by Year')}
-            </option>
-            {dynamicYears.map((yr) => (
-              <option key={yr} value={yr} style={{ color: '#000000', backgroundColor: '#ffffff' }}>
-                {yr}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={14} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#000000' }} />
-        </div>
+        <CustomFilterDropdown
+          placeholder={t('bulk.filter_by_year', 'Filter by Year')}
+          label={yearFilter ? `${yearFilter}` : ''}
+          value={yearFilter}
+          options={[
+            { value: '', label: `${t('bulk.filter_by_year', 'Filter by Year')} (All)` },
+            ...dynamicYears.map((yr) => ({ value: yr, label: yr })),
+          ]}
+          onSelect={(val) => {
+            setYearFilter(val);
+            setYearOpen(false);
+          }}
+          isOpen={yearOpen}
+          onToggle={() => {
+            setYearOpen(!yearOpen);
+            setMonthOpen(false);
+            setDeptOpen(false);
+            setPriorityOpen(false);
+            setStatusOpen(false);
+          }}
+          dropdownRef={yearDropdownRef}
+          width={130}
+          dropdownWidth={140}
+        />
 
         {/* 2. Month Filter */}
-        <div style={{ position: 'relative', flex: '0 0 145px', width: 145, boxSizing: 'border-box' }}>
-          <select
-            value={monthFilter}
-            onChange={(e) => setMonthFilter(e.target.value)}
-            className="filter-select btn btn-ghost btn-sm"
-            style={{
-              width: '100%',
-              height: 38,
-              paddingRight: 24,
-              appearance: 'none',
-              cursor: 'pointer',
-              color: '#000000',
-              textOverflow: 'ellipsis',
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-              boxSizing: 'border-box',
-              fontSize: '0.95rem',
-            }}
-          >
-            <option value="" style={{ color: '#000000', backgroundColor: '#ffffff' }}>
-              {t('bulk.filter_by_month', 'Filter by Month')}
-            </option>
-            {dynamicMonths.map((m) => (
-              <option key={m.value} value={m.value} style={{ color: '#000000', backgroundColor: '#ffffff' }}>
-                {i18n.language === 'ta' ? m.labelTa : m.labelEn}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={14} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#000000' }} />
-        </div>
+        <CustomFilterDropdown
+          placeholder={t('bulk.filter_by_month', 'Filter by Month')}
+          label={monthFilter ? (dynamicMonths.find((m) => m.value === monthFilter)?.[i18n.language === 'ta' ? 'labelTa' : 'labelEn'] || monthFilter) : ''}
+          value={monthFilter}
+          options={[
+            { value: '', label: `${t('bulk.filter_by_month', 'Filter by Month')} (All)` },
+            ...dynamicMonths.map((m) => ({
+              value: m.value,
+              label: i18n.language === 'ta' ? m.labelTa : m.labelEn,
+            })),
+          ]}
+          onSelect={(val) => {
+            setMonthFilter(val);
+            setMonthOpen(false);
+          }}
+          isOpen={monthOpen}
+          onToggle={() => {
+            setMonthOpen(!monthOpen);
+            setYearOpen(false);
+            setDeptOpen(false);
+            setPriorityOpen(false);
+            setStatusOpen(false);
+          }}
+          dropdownRef={monthDropdownRef}
+          width={140}
+          dropdownWidth={160}
+        />
 
         {/* 3. Date Filter */}
         <div style={{ position: 'relative', flex: '0 0 140px', width: 140, boxSizing: 'border-box' }}>
@@ -591,114 +765,113 @@ export default function BulkModule() {
               height: 38,
               paddingRight: 6,
               cursor: 'pointer',
-              color: '#000000',
+              color: 'var(--color-text-primary)',
+              background: dateFilter ? 'rgba(16, 185, 129, 0.08)' : 'var(--color-surface-input)',
+              border: dateFilter ? '1.5px solid #10b981' : '1px solid var(--color-surface-border)',
+              borderRadius: 8,
               boxSizing: 'border-box',
-              fontSize: '0.95rem',
+              fontSize: '0.86rem',
             }}
             title={t('bulk.filter_by_date', 'Filter by Date')}
           />
         </div>
 
-        {/* 4. Department Filter */}
-        <div style={{ position: 'relative', flex: '0 0 210px', width: 210, boxSizing: 'border-box' }}>
-          <select
-            value={deptFilter}
-            onChange={(e) => setDeptFilter(e.target.value)}
-            className="filter-select btn btn-ghost btn-sm tamil-text"
-            style={{
-              width: '100%',
-              height: 38,
-              paddingRight: 24,
-              appearance: 'none',
-              cursor: 'pointer',
-              color: '#000000',
-              textOverflow: 'ellipsis',
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-              boxSizing: 'border-box',
-              fontSize: '0.95rem',
-            }}
-            title={
-              deptFilter
-                ? (collectorateDepartments.find((d) => d.value === deptFilter)?.[i18n.language === 'ta' ? 'nameTa' : 'nameEn'] || deptFilter)
-                : t('bulk.filter_by_dept')
-            }
-          >
-            <option value="" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{t('bulk.filter_by_dept')}</option>
-            {collectorateDepartments.map((dept) => {
-              const deptName = i18n.language === 'ta' ? dept.nameTa : dept.nameEn;
-              return (
-                <option
-                  key={dept.value}
-                  value={dept.value}
-                  title={deptName}
-                  style={{ color: '#000000', backgroundColor: '#ffffff' }}
-                >
-                  {truncateOption(deptName, 30)}
-                </option>
-              );
-            })}
-          </select>
-          <ChevronDown size={14} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#000000' }} />
-        </div>
+        {/* 4. Department Filter (Instant search, fixed professional dropdown, zero OS jump) */}
+        <CustomFilterDropdown
+          placeholder={t('bulk.filter_by_dept', 'Filter by Department')}
+          label={deptFilter ? (collectorateDepartments.find((d) => d.value === deptFilter)?.[i18n.language === 'ta' ? 'nameTa' : 'nameEn'] || deptFilter) : ''}
+          value={deptFilter}
+          options={[
+            { value: '', label: `${t('bulk.filter_by_dept', 'Filter by Department')} (All)` },
+            ...filteredDeptList.map((dept) => ({
+              value: dept.value,
+              label: i18n.language === 'ta' ? dept.nameTa : dept.nameEn,
+            })),
+          ]}
+          onSelect={(val) => {
+            setDeptFilter(val);
+            setDeptOpen(false);
+            setDeptSearch('');
+          }}
+          isOpen={deptOpen}
+          onToggle={() => {
+            setDeptOpen(!deptOpen);
+            setYearOpen(false);
+            setMonthOpen(false);
+            setPriorityOpen(false);
+            setStatusOpen(false);
+          }}
+          dropdownRef={deptDropdownRef}
+          hasSearch={true}
+          searchPlaceholder={i18n.language === 'ta' ? 'துறையைத் தேடுக...' : 'Search department...'}
+          searchValue={deptSearch}
+          onSearchChange={setDeptSearch}
+          width={210}
+          dropdownWidth={340}
+          renderOption={(opt) => (
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'normal', lineHeight: 1.35, fontSize: '0.83rem' }}>
+              {opt.label}
+            </span>
+          )}
+        />
 
         {/* 5. Priority Filter */}
-        <div style={{ position: 'relative', flex: '0 0 140px', width: 140, boxSizing: 'border-box' }}>
-          <select
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            className="filter-select btn btn-ghost btn-sm"
-            style={{
-              width: '100%',
-              height: 38,
-              paddingRight: 24,
-              appearance: 'none',
-              cursor: 'pointer',
-              color: '#000000',
-              textOverflow: 'ellipsis',
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-              boxSizing: 'border-box',
-              fontSize: '0.95rem',
-            }}
-          >
-            <option value="" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{t('bulk.filter_by_priority')}</option>
-            <option value="HIGH" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{getPriorityLabel('HIGH')}</option>
-            <option value="MEDIUM" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{getPriorityLabel('MEDIUM')}</option>
-            <option value="LOW" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{getPriorityLabel('LOW')}</option>
-          </select>
-          <ChevronDown size={14} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#000000' }} />
-        </div>
+        <CustomFilterDropdown
+          placeholder={t('bulk.filter_by_priority', 'Filter by Priority')}
+          label={priorityFilter ? getPriorityLabel(priorityFilter) : ''}
+          value={priorityFilter}
+          options={[
+            { value: '', label: `${t('bulk.filter_by_priority', 'Filter by Priority')} (All)` },
+            { value: 'HIGH', label: '🔴 ' + getPriorityLabel('HIGH') },
+            { value: 'MEDIUM', label: '🟡 ' + getPriorityLabel('MEDIUM') },
+            { value: 'LOW', label: '🟢 ' + getPriorityLabel('LOW') },
+          ]}
+          onSelect={(val) => {
+            setPriorityFilter(val);
+            setPriorityOpen(false);
+          }}
+          isOpen={priorityOpen}
+          onToggle={() => {
+            setPriorityOpen(!priorityOpen);
+            setYearOpen(false);
+            setMonthOpen(false);
+            setDeptOpen(false);
+            setStatusOpen(false);
+          }}
+          dropdownRef={priorityDropdownRef}
+          width={140}
+          dropdownWidth={160}
+        />
 
         {/* 6. Status Filter */}
-        <div style={{ position: 'relative', flex: '0 0 130px', width: 130, boxSizing: 'border-box' }}>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="filter-select btn btn-ghost btn-sm"
-            style={{
-              width: '100%',
-              height: 38,
-              paddingRight: 24,
-              appearance: 'none',
-              cursor: 'pointer',
-              color: '#000000',
-              textOverflow: 'ellipsis',
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-              boxSizing: 'border-box',
-              fontSize: '0.95rem',
-            }}
-          >
-            <option value="" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{t('bulk.filter_all')}</option>
-            <option value="pending" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{getStatusLabel('pending')}</option>
-            <option value="ocr_done" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{getStatusLabel('ocr_done')}</option>
-            <option value="draft_ready" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{getStatusLabel('draft_ready')}</option>
-            <option value="approved" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{getStatusLabel('approved')}</option>
-            <option value="rejected" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{getStatusLabel('rejected')}</option>
-          </select>
-          <ChevronDown size={14} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#000000' }} />
-        </div>
+        <CustomFilterDropdown
+          placeholder={t('bulk.filter_all', 'All Statuses')}
+          label={statusFilter ? getStatusLabel(statusFilter) : ''}
+          value={statusFilter}
+          options={[
+            { value: '', label: `${t('bulk.filter_all', 'All Statuses')}` },
+            { value: 'pending', label: '⏳ ' + getStatusLabel('pending') },
+            { value: 'ocr_done', label: '🔍 ' + getStatusLabel('ocr_done') },
+            { value: 'draft_ready', label: '📝 ' + getStatusLabel('draft_ready') },
+            { value: 'approved', label: '✅ ' + getStatusLabel('approved') },
+            { value: 'rejected', label: '❌ ' + getStatusLabel('rejected') },
+          ]}
+          onSelect={(val) => {
+            setStatusFilter(val);
+            setStatusOpen(false);
+          }}
+          isOpen={statusOpen}
+          onToggle={() => {
+            setStatusOpen(!statusOpen);
+            setYearOpen(false);
+            setMonthOpen(false);
+            setDeptOpen(false);
+            setPriorityOpen(false);
+          }}
+          dropdownRef={statusDropdownRef}
+          width={130}
+          dropdownWidth={165}
+        />
 
         {/* Clear/Reset Filters Button */}
         {hasActiveFilters && (

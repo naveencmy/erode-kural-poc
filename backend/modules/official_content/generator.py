@@ -123,10 +123,36 @@ LLM_PROMPTS = {
 }
 
 
+import re
+from typing import Any, Dict, List, Optional, Tuple
+
+def _extract_footer_from_points(points: List[str]) -> Tuple[List[str], Optional[str]]:
+    """Separates any footer / release authority line from the user key points."""
+    clean_points = []
+    found_footer = None
+    for pt in points:
+        raw = re.sub(r'^\d+[\.\)]\s*', '', pt).strip()
+        raw = re.sub(r'^[•\-\*]\s*', '', raw).strip()
+        
+        is_footer = (
+            raw.startswith("வெளியீடு") or
+            "செய்தி மக்கள் தொடர்பு அலுவலர்" in raw or
+            raw.startswith("இப்படிக்கு") or
+            raw.startswith("நேர்முக உதவியாளர்") or
+            raw.startswith("மாவட்ட ஆட்சித்தலைவர் சார்பாக")
+        )
+        if is_footer and len(raw) < 140:
+            found_footer = raw
+        else:
+            clean_points.append(pt)
+    return clean_points, found_footer
+
+
 def _format_circular_fallback(subject: str, details: str, date_str: str) -> str:
     """Build an authentic Erode District Collectorate circular fallback without LLM."""
     clean_subject = subject.strip()
-    points = [p.strip() for p in details.split("\n") if p.strip()]
+    raw_points = [p.strip() for p in details.split("\n") if p.strip()]
+    points, _ = _extract_footer_from_points(raw_points)
 
     p1 = (
         f"ஈரோடு மாவட்டத்தில் {clean_subject} தொடர்பாக, அனைத்து துறைத் தலைவர்கள், வட்டாட்சியர்கள், "
@@ -172,7 +198,8 @@ def _format_circular_fallback(subject: str, details: str, date_str: str) -> str:
 def _format_memo_fallback(subject: str, details: str, date_str: str) -> str:
     """Build an authentic Erode District Office Memorandum / Order fallback without LLM."""
     clean_subject = subject.strip()
-    points = [p.strip() for p in details.split("\n") if p.strip()]
+    raw_points = [p.strip() for p in details.split("\n") if p.strip()]
+    points, _ = _extract_footer_from_points(raw_points)
 
     p_intro = (
         f"ஈரோடு மாவட்டத்தில் {clean_subject} தொடர்பாக, புதிய நடைமுறைகள் மற்றும் வழிகாட்டு நெறிமுறைகள் "
@@ -253,7 +280,8 @@ def _format_meeting_minutes_fallback(subject: str, details: str, date_str: str) 
 def _format_press_release_fallback(subject: str, details: str, date_str: str) -> str:
     """Build an authentic Erode District DIPR press release fallback without LLM."""
     clean_subject = subject.strip()
-    points = [p.strip() for p in details.split("\n") if p.strip()]
+    raw_points = [p.strip() for p in details.split("\n") if p.strip()]
+    points, _ = _extract_footer_from_points(raw_points)
 
     # Paragraph 1: Lead paragraph
     lead_para = (
@@ -409,6 +437,21 @@ class OfficialContentGenerator:
         date_str = now.strftime("%d.%m.%Y")
         content_id = f"cnt_{uuid.uuid4().hex[:12]}"
 
+        # --- Extract and verify any footer provided in details ---
+        raw_detail_lines = [p.strip() for p in (details or "").split("\n") if p.strip()]
+        _, found_footer = _extract_footer_from_points(raw_detail_lines)
+
+        default_footer = "வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்."
+        if found_footer:
+            norm_found = re.sub(r'[\s\-_,.:;]', '', found_footer)
+            norm_def = re.sub(r'[\s\-_,.:;]', '', default_footer)
+            if norm_found == norm_def:
+                final_footer = default_footer
+            else:
+                final_footer = found_footer
+        else:
+            final_footer = default_footer
+
         # --- Generate body content ---
         content_body = None
         source = "fallback"
@@ -435,6 +478,15 @@ class OfficialContentGenerator:
                 fallback = FALLBACK_BODIES.get(template_type, "{subject}\n\n{details}")
                 content_body = fallback.format(subject=subject, details=details or "[விவரம் வழங்கப்படவில்லை]")
 
+        # Strip any redundant footer from content_body
+        content_body_clean_lines = []
+        for line in (content_body or "").splitlines():
+            line_no_num = re.sub(r'^\d+[\.\)]\s*', '', line).strip()
+            if (line_no_num.startswith("வெளியீடு") or "செய்தி மக்கள் தொடர்பு அலுவலர்" in line_no_num or line_no_num.startswith("இப்படிக்கு")) and len(line_no_num) < 140:
+                continue
+            content_body_clean_lines.append(line)
+        content_body = "\n".join(content_body_clean_lines).strip()
+
         # --- Build participants/resolutions for meeting minutes ---
         participants_section = "- தெரிவிக்கப்படும் (To be updated)"
         resolutions_section = "- கூட்ட முடிவுகளின்படி நடவடிக்கை எடுக்கப்படும்."
@@ -454,6 +506,7 @@ class OfficialContentGenerator:
             officer_id=officer_id,
             subject=subject,
             content_body=content_body,
+            footer_text=final_footer,
             participants_section=participants_section,
             resolutions_section=resolutions_section,
         )
