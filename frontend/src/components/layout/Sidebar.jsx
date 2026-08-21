@@ -54,14 +54,14 @@ export default function Sidebar() {
       >
         <TnEmblem size={sidebarCollapsed ? 28 : 32} className="text-[#c8a951] flex-shrink-0" />
         {!sidebarCollapsed && (
-          <div style={{ overflow: 'hidden', minWidth: 0 }}>
+          <div style={{ overflow: 'hidden', minWidth: 0, flex: 1 }}>
             <div
               className="tamil-text"
               style={{
-                fontSize: '0.8rem',
+                fontSize: '0.95rem',
                 fontWeight: 700,
                 color: '#FFFFFF',
-                whiteSpace: 'normal',
+                whiteSpace: 'pre-line',
                 lineHeight: 1.25,
               }}
             >
@@ -72,7 +72,7 @@ export default function Sidebar() {
       </div>
 
       {/* Module Navigation */}
-      <nav style={{ flex: 1, paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <nav style={{ flex: 1, paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
         {NAV_MODULES.map((mod) => {
           const Icon = mod.icon;
           const isActive = currentModule === mod.id;
@@ -82,10 +82,11 @@ export default function Sidebar() {
               className={cn('nav-item', isActive && 'active')}
               onClick={() => setCurrentModule(mod.id)}
               title={t(`sidebar.${mod.id}`)}
+              style={{ fontSize: '0.95rem' }}
             >
               <Icon size={20} style={{ flexShrink: 0 }} />
               {!sidebarCollapsed && (
-                <span className="nav-label tamil-text">{t(`sidebar.${mod.id}`)}</span>
+                <span className="nav-label tamil-text" style={{ fontSize: '0.95rem' }}>{t(`sidebar.${mod.id}`)}</span>
               )}
             </button>
           );

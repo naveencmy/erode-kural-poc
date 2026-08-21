@@ -112,12 +112,12 @@ export default function BulkModule() {
   const departments = appConfig?.departments || {};
 
   return (
-    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {/* Title Row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 className="module-title tamil-text">{t('bulk.title')}</h1>
+        <h1 className="module-title tamil-text" style={{ fontSize: '1.05rem', fontWeight: 700 }}>{t('bulk.title')}</h1>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost btn-sm" onClick={loadData} disabled={loading}>
+          <button className="btn btn-ghost btn-sm" onClick={loadData} disabled={loading} style={{ fontSize: '0.88rem' }}>
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
@@ -125,7 +125,7 @@ export default function BulkModule() {
 
       {/* Stat Cards Grid */}
       {stats && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
           {statCards.map((card) => {
             const Icon = card.icon;
             return (
@@ -139,13 +139,13 @@ export default function BulkModule() {
                     setStatusFilter('');
                   }
                 }}
-                style={{ borderLeft: `4px solid ${card.color}` }}
+                style={{ borderLeft: `4px solid ${card.color}`, padding: '12px 16px' }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Icon size={20} style={{ color: card.color }} />
                 </div>
-                <div className="stat-value">{card.value}</div>
-                <div className="stat-label tamil-text">{t(`bulk.${card.key}`)}</div>
+                <div className="stat-value" style={{ fontSize: '1.8rem' }}>{card.value}</div>
+                <div className="stat-label tamil-text" style={{ fontSize: '0.95rem' }}>{t(`bulk.${card.key}`)}</div>
               </div>
             );
           })}
@@ -159,6 +159,7 @@ export default function BulkModule() {
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
         onClick={() => document.getElementById('file-upload-input').click()}
+        style={{ padding: '24px 16px' }}
       >
         <input
           id="file-upload-input"
@@ -169,16 +170,16 @@ export default function BulkModule() {
           onChange={(e) => handleFileUpload(e.target.files)}
         />
         <Upload size={32} style={{ color: 'var(--color-text-muted)', marginBottom: 8 }} />
-        <div style={{ fontWeight: 600, color: 'var(--color-text-secondary)' }} className="tamil-text">
+        <div style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: '0.95rem' }} className="tamil-text">
           {uploading ? t('common.loading') : t('bulk.upload')}
         </div>
-        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }} className="tamil-text">
+        <div style={{ fontSize: '0.95rem', color: 'var(--color-text-secondary)', marginTop: 4 }} className="tamil-text">
           {t('bulk.upload_desc')}
         </div>
       </div>
 
       {/* Filters Row */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         {/* Search */}
         <div style={{
           display: 'flex',
@@ -201,7 +202,7 @@ export default function BulkModule() {
               border: 'none',
               outline: 'none',
               flex: 1,
-              fontSize: '0.85rem',
+              fontSize: '1rem',
               color: 'var(--color-text-primary)',
             }}
           />
@@ -213,7 +214,7 @@ export default function BulkModule() {
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="filter-select btn btn-ghost btn-sm"
-            style={{ paddingRight: 28, appearance: 'none', cursor: 'pointer', color: '#000000' }}
+            style={{ paddingRight: 28, appearance: 'none', cursor: 'pointer', color: '#000000', fontSize: '1rem' }}
           >
             <option value="" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{t('bulk.filter_all')}</option>
             <option value="pending" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{getStatusLabel('pending')}</option>
@@ -231,7 +232,7 @@ export default function BulkModule() {
             value={deptFilter}
             onChange={(e) => setDeptFilter(e.target.value)}
             className="filter-select btn btn-ghost btn-sm tamil-text"
-            style={{ paddingRight: 28, appearance: 'none', cursor: 'pointer', color: '#000000' }}
+            style={{ paddingRight: 28, appearance: 'none', cursor: 'pointer', color: '#000000', fontSize: '1rem' }}
           >
             <option value="" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{t('bulk.filter_by_dept')}</option>
             {Object.entries(departments).map(([tamilName, engName]) => (
@@ -247,7 +248,7 @@ export default function BulkModule() {
             value={priorityFilter}
             onChange={(e) => setPriorityFilter(e.target.value)}
             className="filter-select btn btn-ghost btn-sm"
-            style={{ paddingRight: 28, appearance: 'none', cursor: 'pointer', color: '#000000' }}
+            style={{ paddingRight: 28, appearance: 'none', cursor: 'pointer', color: '#000000', fontSize: '1rem' }}
           >
             <option value="" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{t('bulk.filter_by_priority')}</option>
             <option value="HIGH" style={{ color: '#000000', backgroundColor: '#ffffff' }}>{getPriorityLabel('HIGH')}</option>
@@ -265,14 +266,14 @@ export default function BulkModule() {
           background: '#fee2e2',
           color: '#991b1b',
           borderRadius: 8,
-          fontSize: '0.85rem',
+          fontSize: '0.95rem',
           display: 'flex',
           alignItems: 'center',
           gap: 8,
         }}>
           <AlertTriangle size={16} />
           {error}
-          <button className="btn btn-sm btn-danger" onClick={loadData} style={{ marginLeft: 'auto' }}>
+          <button className="btn btn-sm btn-danger" onClick={loadData} style={{ marginLeft: 'auto', fontSize: '0.88rem' }}>
             {t('common.retry')}
           </button>
         </div>
@@ -286,21 +287,21 @@ export default function BulkModule() {
       ) : filteredItems.length === 0 ? (
         <div className="empty-state">
           <Inbox size={64} style={{ color: 'var(--color-text-muted)' }} className="empty-icon" />
-          <div className="empty-title tamil-text">{t('bulk.no_items')}</div>
-          <div className="empty-desc tamil-text">{t('bulk.no_items_desc')}</div>
+          <div className="empty-title tamil-text" style={{ fontSize: '1.05rem' }}>{t('bulk.no_items')}</div>
+          <div className="empty-desc tamil-text" style={{ fontSize: '0.95rem' }}>{t('bulk.no_items_desc')}</div>
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <table className="data-table">
             <thead>
               <tr>
-                <th className="tamil-text">{t('bulk.file_name')}</th>
-                <th className="tamil-text">{t('bulk.type')}</th>
-                <th className="tamil-text">{t('bulk.department')}</th>
-                <th className="tamil-text">{t('bulk.priority')}</th>
-                <th className="tamil-text">{t('bulk.status')}</th>
-                <th className="tamil-text">{t('bulk.received')}</th>
-                <th className="tamil-text">{t('bulk.actions')}</th>
+                <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('bulk.file_name')}</th>
+                <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('bulk.type')}</th>
+                <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('bulk.department')}</th>
+                <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('bulk.priority')}</th>
+                <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('bulk.status')}</th>
+                <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('bulk.received')}</th>
+                <th className="tamil-text" style={{ fontSize: '0.95rem' }}>{t('bulk.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -310,7 +311,7 @@ export default function BulkModule() {
                   style={{ animationDelay: `${idx * 30}ms` }}
                   className="animate-fade-in"
                 >
-                  <td>
+                  <td style={{ fontSize: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontWeight: 600 }}>{truncate(item.file_name, 30)}</span>
                       {item.hallucination_score != null && (
@@ -318,11 +319,11 @@ export default function BulkModule() {
                       )}
                     </div>
                   </td>
-                  <td>
+                  <td style={{ fontSize: '1rem' }}>
                     <span style={{
                       padding: '2px 8px',
                       borderRadius: 4,
-                      fontSize: '0.7rem',
+                      fontSize: '0.88rem',
                       fontWeight: 600,
                       background: item.source_type === 'email' ? '#dbeafe' : '#fef3c7',
                       color: item.source_type === 'email' ? '#1e40af' : '#92400e',
@@ -330,20 +331,20 @@ export default function BulkModule() {
                       {item.source_type === 'email' ? '📧 Email' : '📄 Scan'}
                     </span>
                   </td>
-                  <td className="tamil-text" style={{ fontSize: '0.8rem' }}>
+                  <td className="tamil-text" style={{ fontSize: '1rem' }}>
                     {item.department}
                   </td>
-                  <td>
+                  <td style={{ fontSize: '1rem' }}>
                     <span className={`priority-${item.priority?.toLowerCase()}`}>
                       {getPriorityLabel(item.priority)}
                     </span>
                   </td>
-                  <td>
+                  <td style={{ fontSize: '1rem' }}>
                     <span className={`status-badge status-${item.status}`}>
                       {getStatusLabel(item.status)}
                     </span>
                   </td>
-                  <td style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
+                  <td style={{ fontSize: '1rem', color: 'var(--color-text-secondary)' }}>
                     {formatDate(item.received_at)}
                   </td>
                   <td>
@@ -351,6 +352,7 @@ export default function BulkModule() {
                       className="btn btn-ghost btn-sm"
                       onClick={() => setSelectedId(item.source_id)}
                       title={t('bulk.view_detail')}
+                      style={{ fontSize: '0.88rem' }}
                     >
                       <Eye size={14} />
                     </button>
