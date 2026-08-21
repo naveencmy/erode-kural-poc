@@ -42,6 +42,7 @@ export default function GeneralModule() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [file, setFile] = useState(null);
+  const [uploadedSourceId, setUploadedSourceId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [speakingId, setSpeakingId] = useState(null);
@@ -93,7 +94,10 @@ export default function GeneralModule() {
     if (!uploadedFile) return;
     setFile(uploadedFile);
     try {
-      await uploadDocument(uploadedFile);
+      const res = await uploadDocument(uploadedFile, officerId);
+      if (res && res.source_id) {
+        setUploadedSourceId(res.source_id);
+      }
     } catch (err) {
       console.error('File upload error:', err);
     }
@@ -196,6 +200,7 @@ export default function GeneralModule() {
     const rawText = textToSend || input;
     if ((!rawText.trim() && !file) || loading) return;
 
+    const currentSourceId = uploadedSourceId;
     const messageText = file
       ? `[${t('common.attachment')}: ${file.name}] ${rawText.trim() || t('general.doc_received')}`
       : rawText.trim();
@@ -218,7 +223,7 @@ export default function GeneralModule() {
     scrollToBottom(true);
 
     try {
-      const res = await sendChat(messageText, officerId);
+      const res = await sendChat(messageText, officerId, currentSourceId);
       const aiContent = res.blocks?.[0]?.content || 'Completed.';
       const aiMsg = {
         id: res.message_id ? `${res.message_id}_${Math.random().toString(36).substring(2, 7)}` : `ai_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
