@@ -71,3 +71,6 @@ backend/data/processed/*
 *~
 .DS_Store
 Thumbs.db
+
+backend/*.pdf
+backend/outputs/

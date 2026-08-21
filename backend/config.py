@@ -50,6 +50,7 @@ UPLOADS_DATASETS_DIR = UPLOADS_DIR / "datasets"
 UPLOADS_DOCUMENTS_DIR = UPLOADS_DIR / "documents"
 OUTPUTS_DIR = BASE_DIR / "outputs"
 OUTPUTS_CHARTS_DIR = OUTPUTS_DIR / "charts"
+OUTPUTS_CONTENT_DIR = OUTPUTS_DIR / "content"
 
 # Ensure runtime directories exist
 for directory in [
@@ -64,6 +65,7 @@ for directory in [
     UPLOADS_DOCUMENTS_DIR,
     OUTPUTS_DIR,
     OUTPUTS_CHARTS_DIR,
+    OUTPUTS_CONTENT_DIR,
 ]:
     directory.mkdir(parents=True, exist_ok=True)
 

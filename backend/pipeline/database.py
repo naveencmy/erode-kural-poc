@@ -286,6 +286,24 @@ def init_db(db_path: Optional[Path] = None) -> None:
         if "missing_fields" not in draft_cols:
             cur.execute("ALTER TABLE drafts ADD COLUMN missing_fields TEXT")
 
+        # Module 3: Official Content table
+        conn.executescript("""
+        CREATE TABLE IF NOT EXISTS official_content (
+            content_id TEXT PRIMARY KEY,
+            template_type TEXT NOT NULL,
+            ref_number TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            details TEXT,
+            generated_text TEXT NOT NULL,
+            content_body TEXT,
+            officer_id TEXT NOT NULL,
+            source TEXT DEFAULT 'fallback',
+            status TEXT CHECK(status IN ('generated', 'exported', 'approved')) DEFAULT 'generated',
+            docx_path TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+
     conn.close()
 
 
@@ -328,6 +346,20 @@ def get_source(source_id: str, db_path: Optional[Path] = None) -> Optional[Dict[
     finally:
         conn.close()
 
+
+def get_official_content(
+    content_id: str,
+    db_path: Optional[Path] = None,
+) -> Optional[Dict[str, Any]]:
+    """Fetch a single official content record by ID."""
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM official_content WHERE content_id = ?", (content_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
 
 
 def update_source_status(source_id: str, status: str, db_path: Optional[Path] = None) -> None:
@@ -1091,6 +1123,83 @@ def list_sent_emails(limit: int = 50, db_path: Optional[Path] = None) -> List[Di
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Module 3: Official Content CRUD
+# ---------------------------------------------------------------------------
+
+def save_official_content(
+    content_id: str,
+    template_type: str,
+    ref_number: str,
+    subject: str,
+    details: str,
+    generated_text: str,
+    content_body: str,
+    officer_id: str,
+    source: str = "fallback",
+    docx_path: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """Persist a generated official content record."""
+    conn = get_db_connection(db_path)
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO official_content
+                    (content_id, template_type, ref_number, subject, details,
+                     generated_text, content_body, officer_id, source, docx_path)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (content_id, template_type, ref_number, subject, details,
+                 generated_text, content_body, officer_id, source, docx_path),
+            )
+            return True
+    finally:
+        conn.close()
+
+
+def update_content_docx_path(
+    content_id: str,
+    docx_path: str,
+    db_path: Optional[Path] = None,
+) -> None:
+    """Update the DOCX export path for a content record."""
+    conn = get_db_connection(db_path)
+    try:
+        with conn:
+            conn.execute(
+                "UPDATE official_content SET docx_path = ?, status = 'exported' WHERE content_id = ?",
+                (docx_path, content_id),
+            )
+    finally:
+        conn.close()
+
+
+def list_official_content(
+    officer_id: Optional[str] = None,
+    limit: int = 50,
+    db_path: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
+    """List generated official content records sorted by created_at DESC."""
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        if officer_id:
+            cursor.execute(
+                "SELECT * FROM official_content WHERE officer_id = ? ORDER BY created_at DESC LIMIT ?",
+                (officer_id, limit),
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM official_content ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            )
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
 # ─── Module 1: Content Fingerprint & Suggestions Persistence ─────────────────
 
 def save_content_fingerprint(
@@ -1423,6 +1532,3 @@ def approve_document_summary(summary_id: str, officer_id: str, db_path: Optional
             return cursor.rowcount > 0
     finally:
         conn.close()
-
-
-
