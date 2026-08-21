@@ -12,6 +12,7 @@ import config
 from pipeline.database import get_db_connection, init_db, log_audit
 from pipeline.ingestion import FileSystemWatcher, IMAPPoller, process_file_path, process_raw_email
 from pipeline.orchestrator import WorkflowPipeline
+from server import app
 
 logging.basicConfig(
     level=logging.INFO,
