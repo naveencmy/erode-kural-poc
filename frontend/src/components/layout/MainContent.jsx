@@ -1,7 +1,6 @@
 import React from 'react';
 import useAppStore from '../../stores/appStore';
 import GeneralModule from '../modules/GeneralModule';
-import DocumentModule from '../modules/DocumentModule';
 import DataModule from '../modules/DataModule';
 import ContentModule from '../modules/ContentModule';
 import BulkModule from '../modules/BulkModule';
@@ -14,8 +13,6 @@ export default function MainContent() {
   switch (currentModule) {
     case 'general':
       return <GeneralModule />;
-    case 'document':
-      return <DocumentModule />;
     case 'data':
       return <DataModule />;
     case 'content':
@@ -27,6 +24,6 @@ export default function MainContent() {
     case 'settings':
       return <SettingsModule />;
     default:
-      return <BulkModule />;
+      return <GeneralModule />;
   }
 }

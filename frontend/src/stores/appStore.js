@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 const useAppStore = create((set, get) => ({
   // ─── Navigation ───────────────────────
-  currentModule: 'bulk',
+  currentModule: 'general',
   setCurrentModule: (module) => set({ currentModule: module }),
 
   // ─── Sidebar ──────────────────────────
@@ -38,6 +38,30 @@ const useAppStore = create((set, get) => ({
   // ─── App config (from API) ────────────
   appConfig: null,
   setAppConfig: (config) => set({ appConfig: config }),
+
+  // ─── Data & Visualization Session State (In-Memory Session Only) ───
+  dataSession: {
+    datasetId: null,
+    datasetSchema: null,
+    graphType: 'bar',
+    chatMessages: null,
+  },
+  setDataSession: (sessionData) =>
+    set((s) => ({
+      dataSession: {
+        ...s.dataSession,
+        ...sessionData,
+      },
+    })),
+  clearDataSession: () =>
+    set({
+      dataSession: {
+        datasetId: null,
+        datasetSchema: null,
+        graphType: 'bar',
+        chatMessages: null,
+      },
+    }),
 
   // ─── Loading / Error states ───────────
   isLoading: false,

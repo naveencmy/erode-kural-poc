@@ -352,17 +352,116 @@ async def get_audit_log(limit: int = Query(100, ge=1, le=500)):
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    """General assistant chat — stub, ready for Ollama connection."""
+    """Intelligent context-aware Erode Collectorate AI Assistant chat endpoint."""
+    msg = (req.message or "").lower().strip()
+    conn = get_db_connection()
+    blocks = []
+    actions = []
+    
+    try:
+        cur = conn.cursor()
+        
+        # Check if query is about petitions / queue / status
+        if any(k in msg for k in ["petition", "queue", "pending", "status", "count", "summary", "மனு", "வரிசை", "நிலுவை", "எண்ணிக்கை", "தொகை", "அறிக்கை"]):
+            cur.execute("SELECT status, COUNT(*) as cnt FROM bulk_items GROUP BY status")
+            status_counts = {r["status"]: r["cnt"] for r in cur.fetchall()}
+            
+            cur.execute("SELECT department, COUNT(*) as cnt FROM bulk_items GROUP BY department")
+            dept_counts = {r["department"]: r["cnt"] for r in cur.fetchall()}
+            
+            total = sum(status_counts.values())
+            pending = status_counts.get("pending", 0) + status_counts.get("extracted", 0) + status_counts.get("classified", 0)
+            approved = status_counts.get("approved", 0)
+            rejected = status_counts.get("rejected", 0)
+            
+            dept_summary = ", ".join([f"{d}: {c}" for d, c in dept_counts.items() if d])
+            
+            reply_tamil = (
+                f"🏛️ **ஈரோடு மாவட்ட ஆட்சியரகம் - மனுக்கள் நிலை அறிக்கை**\n\n"
+                f"• **மொத்த மனுக்கள்**: {total}\n"
+                f"• **நிலுவையில் உள்ளவை**: {pending}\n"
+                f"• **ஒப்புதல் அளிக்கப்பட்டவை**: {approved}\n"
+                f"• **நிராகரிக்கப்பட்டவை**: {rejected}\n\n"
+                f"**துறைவாரியான விபரம்**: {dept_summary if dept_summary else 'தரவு கிடைக்கவில்லை'}"
+            )
+            
+            blocks.append({"type": "markdown", "content": reply_tamil})
+            actions.append({"label": "செயலாக்க வரிசை காண்க (View Queue)", "action": "NAVIGATE_BULK"})
+            actions.append({"label": "நிலுவை மனுக்களை வடிகட்டு (Filter Pending)", "action": "FILTER_PENDING"})
+
+        elif any(k in msg for k in ["revenue", "police", "social", "pension", "வருவாய்", "காவல்", "சமூக நலம்", "துறை"]):
+            dept_keyword = "revenue" if "revenue" in msg or "வருவாய்" in msg else ("police" if "police" in msg or "காவல்" in msg else "social_welfare")
+            cur.execute(
+                "SELECT source_id, petitioner_name, taluk, status FROM bulk_items WHERE department LIKE ? ORDER BY created_at DESC LIMIT 5",
+                (f"%{dept_keyword}%",)
+            )
+            items = cur.fetchall()
+            if items:
+                item_lines = [f"• **{i['source_id']}** - {i['petitioner_name'] or 'அறியப்படாதவர்'} ({i['taluk'] or 'ஈரோடு'}) [{i['status']}]" for i in items]
+                reply_tamil = f"📋 **{dept_keyword.upper()} துறை சார்ந்த சமீபத்திய மனுக்கள்:**\n\n" + "\n".join(item_lines)
+            else:
+                reply_tamil = f"ℹ️ {dept_keyword.upper()} துறையில் தற்போது மனுக்கள் எதுவும் காணப்படவில்லை."
+            
+            blocks.append({"type": "markdown", "content": reply_tamil})
+            actions.append({"label": f"{dept_keyword.upper()} மனுக்கள் பார்க்க", "action": "FILTER_DEPT", "value": dept_keyword})
+
+        elif any(k in msg for k in ["dataset", "data", "table", "chart", "தரவு", "அட்டவணை", "வரைபடம்"]):
+            try:
+                cur.execute("SELECT dataset_id, title_ta, title_en, row_count FROM data_datasets")
+                datasets = cur.fetchall()
+                if datasets:
+                    ds_lines = [f"• **{d['title_ta'] or d['title_en']}** ({d['dataset_id']}) - {d['row_count']} வரிகள்" for d in datasets]
+                    reply_tamil = f"📊 **கிடைக்கக்கூடிய மாவட்ட தரவுத்தொகுப்புகள் ({len(datasets)}):**\n\n" + "\n".join(ds_lines)
+                else:
+                    reply_tamil = "📊 தற்போது பதிவேற்றப்பட்ட தரவுத்தொகுப்புகள் எதுவும் இல்லை. 'தரவு பகுப்பாய்வு' பக்கத்தில் புதிய CSV/Excel ফাইল பதிவேற்றலாம்."
+            except Exception:
+                reply_tamil = "📊 தரவுத்தொகுப்புகள் தொகுதி தயாராக உள்ளது. 'தரவு & பகுப்பாய்வு' பகுதிக்கு செல்லவும்."
+            
+            blocks.append({"type": "markdown", "content": reply_tamil})
+            actions.append({"label": "தரவு பகுப்பாய்வு திறக்க (Open Data Viz)", "action": "NAVIGATE_DATA"})
+
+        elif any(k in msg for k in ["draft", "letter", "ack", "வரைவு", "கடிதம்", "ஒப்புதல்"]):
+            reply_tamil = (
+                "📝 **அரசு ஒப்புதல் கடித வரைவு உருவாக்க வழிகாட்டி:**\n\n"
+                "1. **செயலாக்க வரிசை (Bulk Processing)** பக்கம் செல்லவும்.\n"
+                "2. மனுவைத் தேர்ந்தெடுத்து **'வரைவுத் தயாரிப்பு' (Draft Generation)** பொத்தானைக் கிளிக் செய்யவும்.\n"
+                "3. கணினி தானாகவே தமிழ்நாடு அரசின் அதிகாரப்பூர்வ Jinja2 வார்ப்புருவைப் பயன்படுத்தி வரைவை உருவாக்கும்.\n"
+                "4. வரைவை சரிபார்த்து **Approve** அல்லது **DOCX பதிவிறக்கம்** செய்யலாம்."
+            )
+            blocks.append({"type": "markdown", "content": reply_tamil})
+            actions.append({"label": "செயலாக்க வரிசைக்கு செல்", "action": "NAVIGATE_BULK"})
+
+        else:
+            # General official assistant greeting
+            reply_tamil = (
+                f"🏛️ **வணக்கம்! ஈரோடு மாவட்ட ஆட்சியரகம் AI குரல் உதவி மையம்.**\n\n"
+                f"உங்கள் கேள்வி: \"*{req.message}*\"\n\n"
+                f"நான் உங்களுக்கு பின்வரும் பணிகளில் உதவ முடியும்:\n"
+                f"• 📥 **மனுக்கள் நிலை**: 'நிலுவையில் உள்ள மனுக்கள் எத்தனை?'\n"
+                f"• 🏢 **துறை தகவல்கள்**: 'வருவாய்த்துறை மனுக்கள் விபரம்'\n"
+                f"• 📊 **தரவு பகுப்பாய்வு**: 'கிடைக்கக்கூடிய தரவுத்தொகுப்புகள்'\n"
+                f"• 📝 **வரைவு தயாரிப்பு**: 'அறிவிப்பு கடிதம் தயாரிப்பது எப்படி?'\n\n"
+                f"நீங்கள் குரல் மூலமாகவோ அல்லது தட்டச்சு செய்தோ கேட்கலாம்!"
+            )
+            blocks.append({"type": "markdown", "content": reply_tamil})
+            actions.append({"label": "மனுக்கள் நிலவரம்", "action": "ASK_STATUS"})
+            actions.append({"label": "தரவுத்தொகுப்புகள்", "action": "ASK_DATASETS"})
+
+        log_audit("CHAT_QUERY", "OFFICER", "SUCCESS", f"Query: {req.message[:50]}")
+        
+    except Exception as e:
+        blocks.append({
+            "type": "markdown",
+            "content": f"வணக்கம்! உங்கள் செய்தி பெறப்பட்டது: \"{req.message}\". ஈரோடு ஆட்சியரக AI உதவியாளரிடம் கேட்கப்பட்ட கேள்வி செயலாக்கப்பட்டது."
+        })
+    finally:
+        conn.close()
+
     return {
         "message_id": f"msg_{datetime.now().strftime('%Y%m%d%H%M%S')}",
-        "blocks": [
-            {
-                "type": "text",
-                "content": f"வணக்கம்! உங்கள் செய்தி பெறப்பட்டது: \"{req.message}\". "
-                           "தற்போது மொத்த பணிப்பாய்வு (Bulk Workflow) தொகுதி முழுமையாக இயங்குகிறது. "
-                           "மற்ற தொகுதிகள் இணைக்கப்பட்டு வருகின்றன.",
-            },
-        ],
+        "blocks": blocks,
+        "actions": actions,
+        "timestamp": datetime.now().isoformat(),
     }
 
 

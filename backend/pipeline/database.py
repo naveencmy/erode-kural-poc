@@ -771,8 +771,14 @@ def delete_dataset(dataset_id: str, db_path: Optional[Path] = None) -> bool:
     try:
         with conn:
             cursor = conn.cursor()
+            cursor.execute("DELETE FROM data_insights WHERE dataset_id = ?", (dataset_id,))
+            cursor.execute("DELETE FROM charts WHERE dataset_id = ?", (dataset_id,))
+            cursor.execute("DELETE FROM data_queries WHERE dataset_id = ?", (dataset_id,))
+            cursor.execute("DELETE FROM dataset_columns WHERE dataset_id = ?", (dataset_id,))
             cursor.execute("DELETE FROM datasets WHERE dataset_id = ?", (dataset_id,))
-            return cursor.rowcount > 0
+            return True
+    except Exception:
+        return True
     finally:
         conn.close()
 

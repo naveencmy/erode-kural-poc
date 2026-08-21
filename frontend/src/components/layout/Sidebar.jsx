@@ -18,7 +18,6 @@ import {
 
 const NAV_MODULES = [
   { id: 'general', icon: MessageSquare },
-  { id: 'document', icon: FileText },
   { id: 'data', icon: BarChart3 },
   { id: 'content', icon: Stamp },
   { id: 'bulk', icon: Inbox },
@@ -40,39 +39,33 @@ export default function Sidebar() {
 
   return (
     <aside className={cn('sidebar', sidebarCollapsed && 'collapsed')}>
-      {/* Header with emblem */}
+      {/* Header with emblem - Aligned with TopBar height */}
       <div
         style={{
-          padding: sidebarCollapsed ? '20px 12px' : '20px',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          height: 'var(--spacing-topbar)',
+          padding: sidebarCollapsed ? '0 12px' : '0 16px',
+          borderBottom: '2px solid var(--color-surface-border)',
           display: 'flex',
           alignItems: 'center',
-          gap: 12,
-          minHeight: 80,
+          gap: 10,
+          boxSizing: 'border-box',
+          flexShrink: 0,
         }}
       >
-        <TnEmblem size={sidebarCollapsed ? 36 : 42} className="text-[#c8a951] flex-shrink-0" />
+        <TnEmblem size={sidebarCollapsed ? 28 : 32} className="text-[#c8a951] flex-shrink-0" />
         {!sidebarCollapsed && (
-          <div style={{ overflow: 'hidden' }}>
+          <div style={{ overflow: 'hidden', minWidth: 0 }}>
             <div
               className="tamil-text"
               style={{
-                fontSize: '0.85rem',
+                fontSize: '0.8rem',
                 fontWeight: 700,
-                color: '#c8a951',
-                whiteSpace: 'nowrap',
+                color: '#FFFFFF',
+                whiteSpace: 'normal',
+                lineHeight: 1.25,
               }}
             >
               {t('app_title')}
-            </div>
-            <div
-              style={{
-                fontSize: '0.7rem',
-                color: 'rgba(255,255,255,0.5)',
-                marginTop: 2,
-              }}
-            >
-              {t('app_subtitle')}
             </div>
           </div>
         )}
@@ -105,14 +98,18 @@ export default function Sidebar() {
           borderTop: '1px solid rgba(255,255,255,0.1)',
           paddingTop: 8,
           paddingBottom: 16,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
         }}
       >
         {NAV_BOTTOM.map((mod) => {
           const Icon = mod.icon;
+          const isActive = currentModule === mod.id;
           return (
             <button
               key={mod.id}
-              className="nav-item"
+              className={cn('nav-item', isActive && 'active')}
               onClick={() => setCurrentModule(mod.id)}
               title={t(`sidebar.${mod.id}`)}
             >
@@ -131,7 +128,11 @@ export default function Sidebar() {
           title={sidebarCollapsed ? 'Expand' : 'Collapse'}
           style={{ marginTop: 4 }}
         >
-          {sidebarCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+          {sidebarCollapsed ? (
+            <ChevronRight size={20} style={{ flexShrink: 0 }} />
+          ) : (
+            <ChevronLeft size={20} style={{ flexShrink: 0 }} />
+          )}
           {!sidebarCollapsed && <span className="nav-label">Collapse</span>}
         </button>
       </div>

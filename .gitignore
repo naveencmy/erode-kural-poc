@@ -57,6 +57,10 @@ backend/data/scans/*
 backend/data/processed/*
 !backend/data/processed/.gitkeep
 
+# Uploads & Temporary Files
+backend/uploads/
+frontend/digest.txt
+
 # IDE & OS Files
 .vscode/
 .idea/
