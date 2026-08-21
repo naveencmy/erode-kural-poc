@@ -19,7 +19,11 @@ def get_db_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
 
 
 def init_db(db_path: Optional[Path] = None) -> None:
-    """Initialize all tables and migrate schema strictly conforming to Collectorate V0.2 contracts."""
+    """
+    Initialize the database schema and apply safe migrations for existing databases.
+    
+    The function creates workflow, dataset, visualization, email, summarization, prompt-suggestion, fingerprint, and official-content tables when they are absent. It also ensures required seed data and columns are present.
+    """
     conn = get_db_connection(db_path)
     with conn:
         conn.executescript("""
@@ -363,7 +367,12 @@ def get_official_content(
 
 
 def update_source_status(source_id: str, status: str, db_path: Optional[Path] = None) -> None:
-    """Update pipeline processing state."""
+    """Update a source's processing status and timestamp.
+    
+    Parameters:
+    	source_id (str): Identifier of the source to update.
+    	status (str): New processing status.
+    """
     conn = get_db_connection(db_path)
     try:
         with conn:
@@ -1140,7 +1149,16 @@ def save_official_content(
     docx_path: Optional[str] = None,
     db_path: Optional[Path] = None,
 ) -> bool:
-    """Persist a generated official content record."""
+    """
+    Persist a generated official-content record.
+    
+    Parameters:
+        source (str): Origin of the content generation.
+        docx_path (Optional[str]): Path to an exported DOCX file, if available.
+    
+    Returns:
+        bool: `True` after the record is inserted successfully.
+    """
     conn = get_db_connection(db_path)
     try:
         with conn:
@@ -1164,7 +1182,7 @@ def update_content_docx_path(
     docx_path: str,
     db_path: Optional[Path] = None,
 ) -> None:
-    """Update the DOCX export path for a content record."""
+    """Store the DOCX export path and mark the content record as exported."""
     conn = get_db_connection(db_path)
     try:
         with conn:
@@ -1181,7 +1199,16 @@ def list_official_content(
     limit: int = 50,
     db_path: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
-    """List generated official content records sorted by created_at DESC."""
+    """
+    List generated official content records in reverse creation order.
+    
+    Parameters:
+    	officer_id (Optional[str]): Restrict results to content created by this officer.
+    	limit (int): Maximum number of records to return.
+    
+    Returns:
+    	List[Dict[str, Any]]: Official content records ordered by creation time, newest first.
+    """
     conn = get_db_connection(db_path)
     try:
         cursor = conn.cursor()
@@ -1209,7 +1236,18 @@ def save_content_fingerprint(
     content_type: str = "general",
     db_path: Optional[Path] = None,
 ) -> str:
-    """Save content fingerprint in sources and content_fingerprints cache."""
+    """
+    Save a document fingerprint to the source record and fingerprint cache.
+    
+    Parameters:
+    	source_id (str): Identifier of the source document.
+    	fingerprint (Dict[str, Any]): Structured fingerprint data to serialize and store.
+    	file_type (str): Type of the source file.
+    	content_type (str): Category of the document content.
+    
+    Returns:
+    	str: A 16-character identifier derived from the serialized fingerprint.
+    """
     import hashlib
     fp_json = json.dumps(fingerprint, ensure_ascii=False)
     fp_id = hashlib.sha256(fp_json.encode("utf-8")).hexdigest()[:16]

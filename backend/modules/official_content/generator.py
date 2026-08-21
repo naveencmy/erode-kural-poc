@@ -124,7 +124,17 @@ LLM_PROMPTS = {
 
 
 def _format_circular_fallback(subject: str, details: str, date_str: str) -> str:
-    """Build an authentic Erode District Collectorate circular fallback without LLM."""
+    """
+    Builds a Tamil circular body from the supplied subject, details, and date.
+    
+    Parameters:
+    	subject (str): The circular's subject.
+    	details (str): Directive and monitoring details to include.
+    	date_str (str): The circular date.
+    
+    Returns:
+    	str: The formatted circular body.
+    """
     clean_subject = subject.strip()
     points = [p.strip() for p in details.split("\n") if p.strip()]
 
@@ -170,7 +180,16 @@ def _format_circular_fallback(subject: str, details: str, date_str: str) -> str:
 
 
 def _format_memo_fallback(subject: str, details: str, date_str: str) -> str:
-    """Build an authentic Erode District Office Memorandum / Order fallback without LLM."""
+    """Builds a Tamil fallback office memorandum or order from the subject, details, and date.
+    
+    Parameters:
+    	subject (str): The memorandum subject.
+    	details (str): Detail lines to include as numbered instructions.
+    	date_str (str): Date associated with the memorandum.
+    
+    Returns:
+    	str: The formatted Tamil memorandum or order text.
+    """
     clean_subject = subject.strip()
     points = [p.strip() for p in details.split("\n") if p.strip()]
 
@@ -206,7 +225,17 @@ def _format_memo_fallback(subject: str, details: str, date_str: str) -> str:
 
 
 def _format_meeting_minutes_fallback(subject: str, details: str, date_str: str) -> str:
-    """Build an authentic Erode District Meeting Minutes fallback without LLM."""
+    """
+    Build Tamil meeting minutes from a subject, detail points, and date when generated content is unavailable.
+    
+    Parameters:
+    	subject (str): Meeting subject.
+    	details (str): Newline-separated requests, responses, or action items.
+    	date_str (str): Meeting date used in the proceedings.
+    
+    Returns:
+    	str: Formatted Tamil meeting minutes.
+    """
     clean_subject = subject.strip()
     points = [p.strip() for p in details.split("\n") if p.strip()]
 
@@ -251,7 +280,17 @@ def _format_meeting_minutes_fallback(subject: str, details: str, date_str: str) 
 
 
 def _format_press_release_fallback(subject: str, details: str, date_str: str) -> str:
-    """Build an authentic Erode District DIPR press release fallback without LLM."""
+    """
+    Builds a Tamil press release from the subject, details, and date.
+    
+    Parameters:
+    	subject (str): The press release subject.
+    	details (str): Supporting details to include in the release.
+    	date_str (str): The date displayed in the lead paragraph.
+    
+    Returns:
+    	str: The formatted press release text.
+    """
     clean_subject = subject.strip()
     points = [p.strip() for p in details.split("\n") if p.strip()]
 
@@ -334,7 +373,14 @@ FALLBACK_BODIES = {
 
 
 def _generate_ref_number(prefix: str) -> str:
-    """Generate an authentic reference / press release sequence number."""
+    """Generate a reference number based on the document prefix.
+    
+    Parameters:
+        prefix (str): Document prefix that determines the reference-number format.
+    
+    Returns:
+        str: A numeric sequence for press releases, or a year-based reference identifier for other document types.
+    """
     now = datetime.now()
     if prefix == "PR":
         # DIPR standard Press Release sequence number (e.g. 14, 39, 59)
@@ -345,7 +391,15 @@ def _generate_ref_number(prefix: str) -> str:
 
 
 def _try_ollama(prompt: str) -> Optional[str]:
-    """Attempt to generate content via local Ollama LLM. Returns None on failure."""
+    """
+    Generate content from the configured local Ollama service.
+    
+    Parameters:
+    	prompt (str): Prompt supplied to the language model.
+    
+    Returns:
+    	Optional[str]: Generated content longer than 20 characters, or None when generation is unavailable or unsuccessful.
+    """
     try:
         response = requests.post(
             f"{config.OLLAMA_API_BASE}/api/generate",
@@ -386,16 +440,21 @@ class OfficialContentGenerator:
         details: str,
         officer_id: str = "OFC001",
     ) -> Dict[str, Any]:
-        """Generate an official document.
-
-        Args:
-            template_type: One of 'press_release', 'circular', 'memo', 'meeting_minutes'
-            subject: Document subject line
-            details: Key points / context for the document
-            officer_id: Officer ID creating the document
-
+        """
+        Generate a formal Tamil Nadu government document of the requested type.
+        
+        Parameters:
+            template_type (str): Document type registered in `TEMPLATE_REGISTRY`.
+            subject (str): Subject of the document.
+            details (str): Key points and contextual information to include.
+            officer_id (str): Identifier of the officer creating the document.
+        
         Returns:
-            Dict with content_id, generated_text, ref_number, template_type, metadata
+            Dict[str, Any]: Generated document content and metadata, including its
+            identifier, reference number, rendered text, source, timestamps, and status.
+        
+        Raises:
+            ValueError: If `template_type` is not registered.
         """
         if template_type not in TEMPLATE_REGISTRY:
             raise ValueError(

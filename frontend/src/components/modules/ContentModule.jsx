@@ -52,7 +52,12 @@ const TEMPLATES = [
   },
 ];
 
-// ─── Source badge ─────────────────────────────────────────────────────────────
+/**
+ * Displays whether content was AI-enhanced or generated from a template.
+ * @param {Object} props - Component properties.
+ * @param {string} props.source - Content source, such as `ollama` or a template.
+ * @returns {JSX.Element} A source badge.
+ */
 function SourceBadge({ source }) {
   const isAI = source === 'ollama';
   return (
@@ -69,7 +74,10 @@ function SourceBadge({ source }) {
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+/**
+ * Provides an interface for generating, editing, previewing, and exporting official documents.
+ * @returns {JSX.Element} The document generation interface.
+ */
 export default function ContentModule() {
   const { officerId } = useAppStore();
   const [selectedTemplate, setSelectedTemplate] = useState(TEMPLATES[0].id);
@@ -92,6 +100,10 @@ export default function ContentModule() {
   const [isFormOpen, setIsFormOpen] = useState(true);
   const formRef = useRef(null);
 
+  /**
+   * Generates content for the selected template from the entered subject and details.
+   * @param {Event} e - The form submission event.
+   */
   async function handleGenerate(e) {
     e.preventDefault();
     if (!subject.trim()) return;
@@ -110,6 +122,9 @@ export default function ContentModule() {
     }
   }
 
+  /**
+   * Exports the current content as a DOCX document.
+   */
   async function handleExport() {
     setExporting(true);
     try {
@@ -121,6 +136,9 @@ export default function ContentModule() {
     }
   }
 
+  /**
+   * Exports the current document content as a formatted PDF.
+   */
   async function handleExportPdf() {
     setExportingPdf(true);
     try {
@@ -270,26 +288,41 @@ export default function ContentModule() {
     }
   }
 
+  /**
+   * Copies the current edited content to the clipboard and briefly indicates that it was copied.
+   */
   function handleCopy() {
     navigator.clipboard.writeText(editedText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
 
+  /**
+   * Enters editing mode for the generated content.
+   */
   function handleStartEdit() {
     setIsEditing(true);
   }
 
+  /**
+   * Saves the edited generated content and exits editing mode.
+   */
   function handleSaveEdit() {
     setResult(prev => ({ ...prev, generated_text: editedText }));
     setIsEditing(false);
   }
 
+  /**
+   * Cancels editing and restores the generated text.
+   */
   function handleCancelEdit() {
     setEditedText(result.generated_text);
     setIsEditing(false);
   }
 
+  /**
+   * Resets the document form and clears the generated content and editing state.
+   */
   function handleReset() {
     setResult(null);
     setError(null);
@@ -300,6 +333,9 @@ export default function ContentModule() {
     setIsFormOpen(true);
   }
 
+  /**
+   * Opens the input form and smoothly scrolls it into view.
+   */
   function scrollToForm() {
     setIsFormOpen(true);
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -615,7 +651,12 @@ export default function ContentModule() {
   );
 }
 
-// ─── Button style helper ──────────────────────────────────────────────────────
+/**
+ * Creates shared styling for an interface button.
+ * @param {string} color - The button color used for filled buttons or text.
+ * @param {boolean} [filled=false] - Whether to use a filled button style.
+ * @return {Object} The button style properties.
+ */
 function btnStyle(color, filled = false) {
   return {
     display: 'flex', alignItems: 'center', gap: 5,

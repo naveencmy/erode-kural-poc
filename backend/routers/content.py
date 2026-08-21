@@ -50,7 +50,18 @@ rag_engine = CollectorateRAGEngine()
 
 @router.post("/api/content/generate")
 async def generate_content(req: ContentGenerateRequest):
-    """Generate an official Tamil Nadu government document."""
+    """
+    Generate and persist an official Tamil Nadu government document from the submitted request.
+    
+    Parameters:
+    	req (ContentGenerateRequest): Request containing the template type, subject and details, and officer identifier.
+    
+    Returns:
+    	dict: Generated document identifiers, metadata, text, source, and success message.
+    
+    Raises:
+    	HTTPException: With status 422 for missing subjects, unsupported template types, or generation validation errors; with status 500 for unexpected failures.
+    """
     subject = req.fields.get("subject", "").strip()
     details = req.fields.get("details", "").strip()
 
@@ -120,7 +131,16 @@ async def generate_content(req: ContentGenerateRequest):
 
 @router.get("/api/content/history")
 async def get_content_history(officer_id: Optional[str] = None, limit: int = 20):
-    """List previously generated official content documents."""
+    """
+    List previously generated official content documents.
+    
+    Parameters:
+        officer_id (Optional[str]): Restricts results to content created by the specified officer.
+        limit (int): Maximum number of records to return.
+    
+    Returns:
+        A dictionary containing the result status, record count, and content items.
+    """
     records = list_official_content(officer_id=officer_id, limit=limit)
     return {"status": "success", "count": len(records), "items": records}
 
@@ -132,7 +152,15 @@ class CustomExportRequest(BaseModel):
 @router.get("/api/content/{content_id}/export-docx")
 @router.post("/api/content/{content_id}/export-docx")
 async def export_content_docx(content_id: str, req: Optional[CustomExportRequest] = None):
-    """Export a generated content document as a formatted .docx file."""
+    """Export a generated content record as a formatted DOCX file.
+    
+    Parameters:
+        content_id (str): Identifier of the content record to export.
+        req (Optional[CustomExportRequest]): Optional replacement text for the exported document.
+    
+    Returns:
+        FileResponse: The generated DOCX file.
+    """
     record = get_official_content(content_id)
     if not record:
         raise HTTPException(status_code=404, detail=f"Content '{content_id}' not found.")
@@ -183,7 +211,15 @@ async def export_content_docx(content_id: str, req: Optional[CustomExportRequest
 @router.get("/api/content/{content_id}/export-pdf")
 @router.post("/api/content/{content_id}/export-pdf")
 async def export_content_pdf(content_id: str, req: Optional[CustomExportRequest] = None):
-    """Export a generated content document as a formatted official .pdf file."""
+    """Export a generated content record as a formatted PDF file.
+    
+    Parameters:
+        content_id (str): Identifier of the content record to export.
+        req (Optional[CustomExportRequest]): Optional replacement text for the exported document.
+    
+    Returns:
+        FileResponse: The generated PDF file.
+    """
     record = get_official_content(content_id)
     if not record:
         raise HTTPException(status_code=404, detail=f"Content '{content_id}' not found.")
@@ -230,6 +266,15 @@ async def export_content_pdf(content_id: str, req: Optional[CustomExportRequest]
 
 
 def _get_title(template_type: str, lang: str) -> str:
+    """Return the localized title for a content template, falling back to its template type.
+    
+    Parameters:
+        template_type (str): Identifier of the content template.
+        lang (str): Language code used to select the localized title.
+    
+    Returns:
+        str: The localized template title or the template type when no title is available.
+    """
     from modules.official_content.templates import TEMPLATE_REGISTRY
     entry = TEMPLATE_REGISTRY.get(template_type, {})
     return entry.get(f"title_{lang}", template_type)
@@ -241,7 +286,15 @@ def _get_title(template_type: str, lang: str) -> str:
 
 @router.post("/api/chat")
 async def chat(req: ChatRequest):
-    """General assistant chat backed by Collectorate RAG and Ollama LLM."""
+    """
+    Processes a chat request and returns workflow status information with retrieved source metadata.
+    
+    Parameters:
+    	req (ChatRequest): Chat message, officer identifier, optional source identifier, and context.
+    
+    Returns:
+    	dict: A response containing a timestamp-based message ID, source metadata, engine information, and a Tamil status message.
+    """
     result = rag_engine.query(
         message=req.message,
         officer_id=req.officer_id,
@@ -265,7 +318,15 @@ async def chat(req: ChatRequest):
 
 @router.post("/api/document/upload")
 async def upload_document(file: UploadFile = File(...)):
-    """Document summarization upload — stub."""
+    """
+    Accepts a document upload and marks it for processing.
+    
+    Parameters:
+    	file (UploadFile): The document uploaded for processing.
+    
+    Returns:
+    	dict: The generated document identifier, original filename, processing status, and pending summarization message.
+    """
     return {
         "document_id": f"doc_{datetime.now().strftime('%Y%m%d%H%M%S')}",
         "file_name": file.filename,
@@ -276,7 +337,14 @@ async def upload_document(file: UploadFile = File(...)):
 
 @router.get("/api/document/{doc_id}/summary")
 async def get_document_summary(doc_id: str):
-    """Document summary retrieval — stub."""
+    """Return the pending summary status for a document.
+    
+    Parameters:
+        doc_id (str): Identifier of the document whose summary is requested.
+    
+    Returns:
+        dict: Document identifier, pending status, and a message indicating that summarization is not yet available.
+    """
     return {
         "document_id": doc_id,
         "status": "pending",

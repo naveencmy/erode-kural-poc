@@ -23,7 +23,15 @@ TN_GOLD = RGBColor(0xC8, 0xA9, 0x51)
 
 
 def _add_header(doc: Document, template_title: str, ref_number: str, date_str: str, officer_id: str):
-    """Add government-styled header to the document."""
+    """
+    Add a Tamil Nadu Government-styled header with the document title and metadata.
+    
+    Parameters:
+        template_title (str): Document type or title to display.
+        ref_number (str): Document reference number.
+        date_str (str): Formatted document date.
+        officer_id (str): Officer identifier to display.
+    """
     # Title block
     header_para = doc.add_paragraph()
     header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -69,7 +77,7 @@ def _add_header(doc: Document, template_title: str, ref_number: str, date_str: s
 
 
 def _add_footer(doc: Document):
-    """Add government-styled footer / signature block."""
+    """Add a government-styled signature block and AI-assisted generation audit line to the document."""
     doc.add_paragraph("─" * 60)
     footer_para = doc.add_paragraph()
     footer_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -98,7 +106,13 @@ def _add_footer(doc: Document):
 
 
 def _export_press_release_docx(doc: Document, content_data: Dict[str, Any]):
-    """Format specifically according to Erode District DIPR Press Release layout."""
+    """
+    Format a DOCX document using the Erode District DIPR press-release layout.
+    
+    Parameters:
+    	doc (Document): The document to populate.
+    	content_data (Dict[str, Any]): Press-release data containing the reference number, display date, and body content.
+    """
     # Top header line: செ.வெ.எண் and நாள்
     header_table = doc.add_table(rows=1, cols=2)
     header_table.autofit = True
@@ -174,7 +188,9 @@ def _export_press_release_docx(doc: Document, content_data: Dict[str, Any]):
 
 
 def _export_circular_docx(doc: Document, content_data: Dict[str, Any]):
-    """Format specifically according to Erode District Collectorate Circular layout."""
+    """
+    Format a Word document using the Erode District Collectorate circular layout.
+    """
     # Top header table: சுற்றறிக்கை எண் and நாள்
     header_table = doc.add_table(rows=1, cols=2)
     header_table.autofit = True
@@ -238,7 +254,12 @@ def _export_circular_docx(doc: Document, content_data: Dict[str, Any]):
     footer_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     r_footer = footer_p.add_run("வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்.")
 def _export_memo_docx(doc: Document, content_data: Dict[str, Any]):
-    """Format specifically according to Erode District Collectorate Office Memorandum layout."""
+    """Format an office memorandum according to the Erode District Collectorate layout.
+    
+    Parameters:
+    	doc (Document): The document to populate.
+    	content_data (Dict[str, Any]): Memorandum metadata and body content, including the reference number, displayed date, and content body.
+    """
     # Top header table: குறிப்பாணை எண் and நாள்
     header_table = doc.add_table(rows=1, cols=2)
     header_table.autofit = True
@@ -304,7 +325,13 @@ def _export_memo_docx(doc: Document, content_data: Dict[str, Any]):
     r_footer.font.size = Pt(10.5)
     r_footer.font.bold = True
 def _export_meeting_minutes_docx(doc: Document, content_data: Dict[str, Any]):
-    """Format specifically according to Erode District Meeting Minutes layout."""
+    """
+    Format meeting-minutes content in the Erode District Collectorate DOCX layout.
+    
+    Parameters:
+    	doc (Document): The document to populate.
+    	content_data (Dict[str, Any]): Meeting metadata and body content, including the date, reference number, subject, and optional content body.
+    """
     # Top Centered Header
     title_p1 = doc.add_paragraph()
     title_p1.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -394,13 +421,14 @@ def _export_meeting_minutes_docx(doc: Document, content_data: Dict[str, Any]):
 
 
 def export_to_docx(content_data: Dict[str, Any]) -> Path:
-    """Export generated content to a formatted .docx file.
-
-    Args:
-        content_data: Dict from OfficialContentGenerator.generate()
-
+    """
+    Export official content to a formatted DOCX file.
+    
+    Parameters:
+    	content_data (Dict[str, Any]): Generated content data containing the template type and document metadata.
+    
     Returns:
-        Path to the generated .docx file.
+    	Path: Path to the generated DOCX file.
     """
     doc = Document()
 
@@ -461,7 +489,15 @@ def export_to_docx(content_data: Dict[str, Any]) -> Path:
 
 
 def export_to_pdf(content_data: Dict[str, Any]) -> Path:
-    """Export generated content directly to an official formatted .pdf file."""
+    """
+    Export content as a Tamil Nadu Government-styled PDF document.
+    
+    Parameters:
+        content_data (Dict[str, Any]): Content, template, reference, date, and output metadata used to generate the document.
+    
+    Returns:
+        Path: Path to the generated PDF file.
+    """
     import pymupdf
 
     font_path = "C:/Windows/Fonts/Nirmala.ttc"
