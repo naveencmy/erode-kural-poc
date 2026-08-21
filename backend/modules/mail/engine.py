@@ -51,6 +51,9 @@ def test_mail_servers(
     smtp_ssl: bool = False,
 ) -> Dict[str, Any]:
     """Perform live diagnostic connection tests for both IMAP and SMTP."""
+    if hasattr(config, "reload_env"):
+        config.reload_env()
+
     srv_imap = str(imap_server or config.IMAP_SERVER).strip()
     port_imap = imap_port or config.IMAP_PORT
     if ":" in srv_imap:
@@ -75,7 +78,7 @@ def test_mail_servers(
             pass
 
     usr_smtp = smtp_user or config.SMTP_USERNAME
-    pwd_smtp = smtp_pwd or pwd_imap
+    pwd_smtp = smtp_pwd or config.SMTP_PASSWORD
 
     results = {
         "timestamp": datetime.now().isoformat(),
@@ -470,6 +473,9 @@ def send_official_email(
     if not to_email or "@" not in to_email:
         raise ValueError("செல்லுபடியாகும் பெறுநர் மின்னஞ்சல் முகவரி தேவை (Invalid recipient email)")
 
+    if hasattr(config, "reload_env"):
+        config.reload_env()
+
     srv = str(smtp_server or config.SMTP_SERVER).strip()
     port = smtp_port or config.SMTP_PORT
     if ":" in srv:
@@ -479,20 +485,18 @@ def send_official_email(
             port = int(parts[1])
         except (ValueError, IndexError):
             pass
-    usr = smtp_user or config.SMTP_USERNAME or config.IMAP_USERNAME
-    pwd = smtp_pwd or get_stored_imap_password(usr) or config.SMTP_PASSWORD or config.IMAP_PASSWORD
+    usr = smtp_user or config.SMTP_USERNAME
+    pwd = smtp_pwd or config.SMTP_PASSWORD
     
-    # Use authenticated user email for From address to pass SPF/DKIM validation
-    sender_addr = from_email
-    if not sender_addr or ("@" not in sender_addr) or ("erode.tn.gov.in" in sender_addr and usr and "@" in usr and "tn.gov.in" not in usr):
-        sender_addr = usr if (usr and "@" in usr) else config.SMTP_FROM_EMAIL
+    # Verified sender address on Brevo
+    sender_addr = from_email or config.SMTP_FROM_EMAIL or "naveenatdevine@gmail.com"
 
     sender_name = from_name or config.SMTP_FROM_NAME
 
     is_local_smtp = srv in ("localhost", "127.0.0.1") or port in (1025, 2525)
     if not is_local_smtp and (not usr or not pwd):
         raise ValueError(
-            "மின்னஞ்சல் பயனர் பெயர் அல்லது App Password சேமிக்கப்படவில்லை. 'மின்னஞ்சல் மையம் ➔ சர்வர் இணைப்பு' பக்கத்தில் அமைப்புகளை சேமிக்கவும் (Missing SMTP credentials)."
+            "மின்னஞ்சல் பயனர் பெயர் அல்லது App Password சேமிக்கப்படவில்லை (Missing SMTP credentials)."
         )
 
     email_id = f"eml_{uuid.uuid4().hex[:10]}"
@@ -503,7 +507,8 @@ def send_official_email(
     msg["To"] = to_email
     msg["Subject"] = subject
     msg["Date"] = email.utils.formatdate(localtime=True)
-    msg["Message-ID"] = email.utils.make_msgid(domain="gmail.com" if "gmail" in srv else "tn.gov.in")
+    sender_domain = sender_addr.split("@")[-1] if "@" in sender_addr else "gmail.com"
+    msg["Message-ID"] = email.utils.make_msgid(domain=sender_domain)
 
     # Add Tamil body text (Plain & HTML)
     msg.attach(MIMEText(body, "plain", "utf-8"))
@@ -529,7 +534,7 @@ def send_official_email(
                 ctx = ssl.create_default_context()
                 smtp_client.starttls(context=ctx)
 
-        if usr and pwd:
+        if usr and pwd and not is_local_smtp:
             smtp_client.login(usr, pwd)
 
         smtp_client.send_message(msg)

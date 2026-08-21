@@ -1,9 +1,9 @@
-"""Content Router — Chat assistant, document summarization, and content generation stubs."""
+"""Content Router — Chat assistant and content generation stubs."""
 
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 router = APIRouter(tags=["Content & Chat"])
@@ -40,27 +40,6 @@ async def chat(req: ChatRequest):
                            "மற்ற தொகுதிகள் இணைக்கப்பட்டு வருகின்றன.",
             },
         ],
-    }
-
-
-@router.post("/api/document/upload")
-async def upload_document(file: UploadFile = File(...)):
-    """Document summarization upload — stub."""
-    return {
-        "document_id": f"doc_{datetime.now().strftime('%Y%m%d%H%M%S')}",
-        "file_name": file.filename,
-        "status": "processing",
-        "message": "ஆவண சுருக்க தொகுதி விரைவில் இணைக்கப்படும்.",
-    }
-
-
-@router.get("/api/document/{doc_id}/summary")
-async def get_document_summary(doc_id: str):
-    """Document summary retrieval — stub."""
-    return {
-        "document_id": doc_id,
-        "status": "pending",
-        "message": "ஆவண சுருக்க தொகுதி விரைவில் இணைக்கப்படும்.",
     }
 
 

@@ -92,15 +92,6 @@ export const sendChat = (message, officerId) =>
     body: JSON.stringify({ message, officer_id: officerId }),
   });
 
-// ─── Document (stub) ─────────────────────────────────
-export const uploadDocument = (file) => {
-  const formData = new FormData();
-  formData.append('file', file);
-  return apiCall('/document/upload', { method: 'POST', body: formData });
-};
-
-export const fetchDocumentSummary = (docId) => apiCall(`/document/${docId}/summary`);
-
 // ─── Module 2: Data & Visualization ─────────────────
 export const fetchDatasets = (officerId = null) => {
   const query = officerId ? `?officer_id=${encodeURIComponent(officerId)}` : '';

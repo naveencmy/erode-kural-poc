@@ -76,7 +76,7 @@ Erode_Collectrate/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── layout/             # Sidebar, TopBar, SourceInspector
-│   │   │   ├── modules/            # BulkModule, DataModule, DocumentModule, etc.
+│   │   │   ├── modules/            # BulkModule, DataModule, ContentModule, etc.
 │   │   │   └── shared/             # ConfidenceBadge, TnEmblem (Inline SVG)
 │   │   ├── locales/                # Bilingual i18n JSONs (ta.json, en.json)
 │   │   ├── stores/                 # Zustand persistent application store

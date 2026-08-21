@@ -2,20 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import useAppStore from '../../stores/appStore';
 import {
-  testMailConnection,
   fetchReceivedEmails,
   ingestEmailToWorkflow,
   sendOfficialEmail,
   fetchSentEmailLogs,
-  fetchMailConfig,
-  saveMailConfig,
 } from '../../lib/api';
 import {
   Mail,
   Inbox,
   Send,
   History,
-  Settings,
   RefreshCw,
   CheckCircle2,
   XCircle,
@@ -23,62 +19,14 @@ import {
   Paperclip,
   ArrowRight,
   Shield,
-  Server,
-  Sparkles,
   ExternalLink,
-  Save,
 } from 'lucide-react';
-
-
-const PRESETS = {
-  nic: {
-    name: "🏛️ NIC அரசு மின்னஞ்சல் (NIC Mail)",
-    imap_server: "imap.nic.in",
-    imap_port: 993,
-    smtp_server: "smtp.nic.in",
-    smtp_port: 587,
-    smtp_tls: true,
-    smtp_ssl: false,
-    from_email: "collectorate.erode@tn.gov.in",
-  },
-  gmail: {
-    name: "✉️ Google Workspace / Gmail",
-    imap_server: "imap.gmail.com",
-    imap_port: 993,
-    smtp_server: "smtp.gmail.com",
-    smtp_port: 587,
-    smtp_tls: true,
-    smtp_ssl: false,
-    from_email: "erode.collectorate@gmail.com",
-  },
-  outlook: {
-    name: "🏢 Microsoft 365 / Outlook",
-    imap_server: "outlook.office365.com",
-    imap_port: 993,
-    smtp_server: "smtp.office365.com",
-    smtp_port: 587,
-    smtp_tls: true,
-    smtp_ssl: false,
-    from_email: "collectorate@erode.tn.gov.in",
-  },
-  mailpit: {
-    name: "📬 Mailpit Local Sandbox (127.0.0.1:1025)",
-    imap_server: "127.0.0.1",
-    imap_port: 993,
-    smtp_server: "127.0.0.1",
-    smtp_port: 1025,
-    smtp_tls: false,
-    smtp_ssl: false,
-    from_email: "collectorate@erode.tn.gov.in",
-  },
-};
-
 
 export default function MailModule() {
   const { t } = useTranslation();
   const { officerId } = useAppStore();
 
-  const [activeTab, setActiveTab] = useState('inbox'); // 'inbox' | 'compose' | 'sent' | 'settings'
+  const [activeTab, setActiveTab] = useState('inbox'); // 'inbox' | 'compose' | 'sent'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
@@ -97,27 +45,8 @@ export default function MailModule() {
   // Sent logs state
   const [sentLogs, setSentLogs] = useState([]);
 
-  // Config & Test state
-  const [mailConfig, setMailConfig] = useState({
-    imap_server: 'imap.nic.in',
-    imap_port: 993,
-    imap_user: '',
-    imap_password: '',
-    smtp_server: 'smtp.nic.in',
-    smtp_port: 587,
-    smtp_user: '',
-    smtp_password: '',
-    smtp_tls: true,
-    smtp_ssl: false,
-    from_email: 'collectorate.erode@tn.gov.in',
-    from_name: 'ஈரோடு மாவட்ட ஆட்சியரகம்',
-  });
-  const [testResults, setTestResults] = useState(null);
-  const [testingConnection, setTestingConnection] = useState(false);
-
   useEffect(() => {
     loadInbox();
-    loadConfig();
     loadSentLogs();
   }, []);
 
@@ -140,85 +69,6 @@ export default function MailModule() {
       setSentLogs(res.sent_emails || []);
     } catch (err) {
       console.warn("Could not load sent logs:", err);
-    }
-  };
-
-  const loadConfig = async () => {
-    try {
-      const res = await fetchMailConfig();
-      if (res) {
-        setMailConfig((prev) => ({ ...prev, ...res, imap_password: '', smtp_password: '' }));
-      }
-    } catch (err) {
-      console.warn("Could not load mail config:", err);
-    }
-  };
-
-  const handleApplyPreset = (presetKey) => {
-    const p = PRESETS[presetKey];
-    if (!p) return;
-    setMailConfig((prev) => ({
-      ...prev,
-      imap_server: p.imap_server,
-      imap_port: p.imap_port,
-      smtp_server: p.smtp_server,
-      smtp_port: p.smtp_port,
-      smtp_tls: p.smtp_tls,
-      smtp_ssl: p.smtp_ssl,
-      from_email: p.from_email || prev.from_email,
-    }));
-  };
-
-  const handleTestConnection = async () => {
-    setTestingConnection(true);
-    setTestResults(null);
-    setError(null);
-    try {
-      const res = await testMailConnection({
-        imap_server: mailConfig.imap_server,
-        imap_port: Number(mailConfig.imap_port),
-        imap_user: mailConfig.imap_user,
-        imap_password: mailConfig.imap_password || undefined,
-        smtp_server: mailConfig.smtp_server,
-        smtp_port: Number(mailConfig.smtp_port),
-        smtp_user: mailConfig.smtp_user || mailConfig.imap_user,
-        smtp_password: mailConfig.smtp_password || mailConfig.imap_password || undefined,
-        smtp_tls: mailConfig.smtp_tls,
-        smtp_ssl: mailConfig.smtp_ssl,
-      });
-      setTestResults(res);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setTestingConnection(false);
-    }
-  };
-
-  const handleSaveConfig = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setSuccessMsg(null);
-    try {
-      await saveMailConfig({
-        imap_server: mailConfig.imap_server,
-        imap_port: Number(mailConfig.imap_port),
-        imap_user: mailConfig.imap_user,
-        imap_password: mailConfig.imap_password || undefined,
-        smtp_server: mailConfig.smtp_server,
-        smtp_port: Number(mailConfig.smtp_port),
-        smtp_user: mailConfig.smtp_user || mailConfig.imap_user,
-        smtp_password: mailConfig.smtp_password || mailConfig.imap_password || undefined,
-        smtp_tls: mailConfig.smtp_tls,
-        smtp_ssl: mailConfig.smtp_ssl,
-        from_email: mailConfig.from_email,
-        from_name: mailConfig.from_name,
-      });
-      setSuccessMsg("மின்னஞ்சல் அமைப்புகள் வெற்றிகரமாக சேமிக்கப்பட்டன!");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -251,10 +101,10 @@ export default function MailModule() {
         recipient_email: composeTo.trim(),
         subject: composeSubject.trim(),
         body: composeBody.trim(),
-        officer_id: officerId,
+        officer_id: officerId || 'OFFICER',
       });
       setSendResult(res);
-      setSuccessMsg(res.message || "மின்னஞ்சல் வெற்றிகரமாக அனுப்பப்பட்டது!");
+      setSuccessMsg(`மின்னஞ்சல் வெற்றிகரமாக அனுப்பப்பட்டது (${composeTo})`);
       setComposeTo('');
       setComposeSubject('');
       setComposeBody('');
@@ -267,35 +117,60 @@ export default function MailModule() {
   };
 
   return (
-    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="module-container animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="module-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h1 className="module-title tamil-text">மின்னஞ்சல் மையம் (Email & Official Mail Hub)</h1>
-          <p style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }} className="tamil-text">
-            மனுதாரர் மின்னஞ்சல்களை உட்கொள்ளுதல், அரசு அஞ்சல் சர்வர் இணைப்பு சோதனை & அதிகாரப்பூர்வ ஒப்புகை கடிதம் அனுப்புதல்
+          <h2 className="module-title tamil-text" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Mail className="text-tn-accent" size={24} />
+            மின்னஞ்சல் மையம் (Email & Official Mail Hub)
+          </h2>
+          <p className="module-subtitle tamil-text">
+            மனுதாரர் மின்னஞ்சல்களை உட்கொள்ளுதல், Brevo கிளவுட் வழியாக பாதுகாப்பாக அதிகாரப்பூர்வ ஒப்புகை கடிதம் அனுப்புதல்
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost btn-sm" onClick={loadInbox} disabled={loading} title="அஞ்சல்களை புதுப்பி">
+
+        {/* Global Action */}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              if (activeTab === 'inbox') loadInbox();
+              if (activeTab === 'sent') loadSentLogs();
+            }}
+            disabled={loading}
+          >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span className="tamil-text">புதுப்பி</span>
+            <span className="tamil-text">புதுப்பி (Refresh)</span>
           </button>
         </div>
       </div>
 
-      {/* Alerts */}
-      {error && (
-        <div style={{ padding: 12, background: '#fee2e2', color: '#991b1b', borderRadius: 8, fontSize: '0.85rem', display: 'flex', gap: 8, alignItems: 'center' }}>
-          <AlertCircle size={16} />
-          <span>{error}</span>
+      {/* Success Notification */}
+      {successMsg && (
+        <div className="alert alert-success animate-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <CheckCircle2 size={16} />
+          <span className="tamil-text" style={{ fontSize: '0.875rem' }}>{successMsg}</span>
+          <button
+            onClick={() => setSuccessMsg(null)}
+            style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.7 }}
+          >
+            ×
+          </button>
         </div>
       )}
 
-      {successMsg && (
-        <div style={{ padding: 12, background: '#dcfce7', color: '#166534', borderRadius: 8, fontSize: '0.85rem', display: 'flex', gap: 8, alignItems: 'center' }}>
-          <CheckCircle2 size={16} />
-          <span>{successMsg}</span>
+      {/* Error Notification */}
+      {error && (
+        <div className="alert alert-danger animate-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <AlertCircle size={16} />
+          <span className="tamil-text" style={{ fontSize: '0.875rem' }}>{error}</span>
+          <button
+            onClick={() => setError(null)}
+            style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.7 }}
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -321,13 +196,6 @@ export default function MailModule() {
         >
           <History size={14} style={{ display: 'inline', marginRight: 6 }} />
           அனுப்பப்பட்ட பதிவேடு (Sent History) ({sentLogs.length})
-        </button>
-        <button
-          className={`tab tamil-text ${activeTab === 'settings' ? 'active' : ''}`}
-          onClick={() => setActiveTab('settings')}
-        >
-          <Server size={14} style={{ display: 'inline', marginRight: 6 }} />
-          சர்வர் இணைப்பு & சோதனை (Connection Test)
         </button>
       </div>
 
@@ -359,29 +227,45 @@ export default function MailModule() {
                       {eml.subject}
                     </span>
                     {eml.has_attachments && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: 4, fontSize: '0.7rem', fontWeight: 600 }}>
-                        <Paperclip size={10} />
-                        இணைப்புகள் ({eml.attachments?.length || 1})
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        fontSize: '0.75rem',
+                        padding: '2px 8px',
+                        borderRadius: 4,
+                        background: 'var(--color-surface-hover)',
+                        color: 'var(--color-text-secondary)',
+                      }}>
+                        <Paperclip size={11} />
+                        {eml.attachments?.length || 1} இணைப்புகள்
                       </span>
                     )}
                   </div>
 
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', display: 'flex', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 16, fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
                     <span><strong>அனுப்பியவர்:</strong> {eml.sender}</span>
-                    <span><strong>தேதி:</strong> {eml.date}</span>
+                    <span><strong>நாள்:</strong> {eml.date}</span>
                   </div>
 
-                  <p className="tamil-text" style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginTop: 4, lineHeight: 1.5 }}>
+                  <p className="tamil-text" style={{
+                    fontSize: '0.85rem',
+                    color: 'var(--color-text-secondary)',
+                    margin: '4px 0 0 0',
+                    lineHeight: 1.5,
+                  }}>
                     {eml.snippet}...
                   </p>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 160 }}>
+                {/* 1-Click Action */}
+                <div>
                   <button
-                    className="btn btn-primary btn-sm tamil-text"
-                    onClick={() => handleIngestEmail(eml.uid)}
+                    className="btn btn-primary btn-sm"
                     disabled={ingestingUid === eml.uid}
-                    style={{ gap: 6 }}
+                    onClick={() => handleIngestEmail(eml.uid)}
+                    title="இந்த மின்னஞ்சலை தானியங்கி மனுவாக மொத்த பணிப்பாய்வில் சேர்க்கவும்"
+                    style={{ whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}
                   >
                     <ArrowRight size={14} />
                     <span>{ingestingUid === eml.uid ? 'உட்கொள்கிறது...' : 'மனுவாக மாற்று (Ingest)'}</span>
@@ -395,7 +279,43 @@ export default function MailModule() {
 
       {/* ─── TAB 2: COMPOSE & SEND ───────────────────────────────────────── */}
       {activeTab === 'compose' && (
-        <div className="card" style={{ padding: 24 }}>
+        <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* Active Cloud Relay Status Banner */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 16px',
+            borderRadius: 8,
+            background: 'var(--color-surface-hover)',
+            border: '1px solid var(--color-surface-border)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Shield size={18} className="text-tn-accent" />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-primary)' }}>
+                  Brevo Cloud Transactional SMTP Relay
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                  அனுப்புநர் (Sender): <code>naveenatdevine@gmail.com</code> (பாதுகாப்பானது / Secured via .env)
+                </div>
+              </div>
+            </div>
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              padding: '4px 10px',
+              borderRadius: 20,
+              background: '#dcfce7',
+              color: '#166534',
+            }}>
+              🟢 செயலில் உள்ளது (Active)
+            </span>
+          </div>
+
           <form onSubmit={handleSendEmail} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>
@@ -487,29 +407,27 @@ export default function MailModule() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>தேதி & நேரம்</th>
                 <th>பெறுநர் (Recipient)</th>
                 <th>தலைப்பு (Subject)</th>
-                <th>அலுவலர்</th>
+                <th>அனுப்பிய நேரம் (Timestamp)</th>
+                <th>கோப்பு எண் (Source ID)</th>
                 <th>நிலை (Status)</th>
               </tr>
             </thead>
             <tbody>
               {sentLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: 24, color: 'var(--color-text-muted)' }}>
-                    அனுப்பப்பட்ட மின்னஞ்சல்கள் பதிவு ஏதுமில்லை.
+                  <td colSpan={5} style={{ textAlign: 'center', padding: 30, color: 'var(--color-text-muted)' }}>
+                    அனுப்பப்பட்ட பதிவேடுகள் ஏதுமில்லை (No sent email history).
                   </td>
                 </tr>
               ) : (
-                sentLogs.map((log, i) => (
-                  <tr key={log.email_id || i}>
-                    <td style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
-                      {log.sent_at}
-                    </td>
+                sentLogs.map((log, idx) => (
+                  <tr key={log.email_id || log.id || idx}>
                     <td style={{ fontWeight: 600 }}>{log.recipient_email}</td>
                     <td className="tamil-text">{log.subject}</td>
-                    <td>{log.officer_id}</td>
+                    <td style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>{log.sent_at}</td>
+                    <td><code>{log.source_id ? log.source_id.slice(0, 10) : '—'}</code></td>
                     <td>
                       <span style={{
                         display: 'inline-flex',
@@ -531,205 +449,6 @@ export default function MailModule() {
               )}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {/* ─── TAB 4: SERVER CONNECTION & TEST ─────────────────────────────── */}
-      {activeTab === 'settings' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Presets */}
-          <div className="card" style={{ padding: 18 }}>
-            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 8 }}>
-              விரைவு சேவையக முன்னமைப்புகள் (Quick Mail Presets):
-            </label>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-              {Object.entries(PRESETS).map(([k, p]) => (
-                <button
-                  key={k}
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => handleApplyPreset(k)}
-                  style={{ border: '1px solid var(--color-surface-border)' }}
-                >
-                  <span>{p.name}</span>
-                </button>
-              ))}
-              <a
-                href="http://localhost:8025"
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-sm"
-                style={{
-                  background: 'var(--color-tn-accent)',
-                  color: 'var(--color-tn-primary-dark)',
-                  textDecoration: 'none',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  fontWeight: 600,
-                }}
-              >
-                <ExternalLink size={13} />
-                <span>Mailpit Web UI (Port 8025) ↗</span>
-              </a>
-            </div>
-          </div>
-
-
-          {/* Connection Test Diagnostics Banner */}
-          {testResults && (
-            <div className="animate-fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              {/* IMAP Result */}
-              <div className="card" style={{
-                borderLeft: `4px solid ${testResults.imap.status === 'success' ? 'var(--color-tn-success)' : 'var(--color-tn-danger)'}`,
-                padding: 16,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>📡 IMAP உள்வரும் இணைப்பு (Inbound)</span>
-                  <span style={{
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    fontSize: '0.7rem',
-                    fontWeight: 700,
-                    background: testResults.imap.status === 'success' ? '#dcfce7' : '#fee2e2',
-                    color: testResults.imap.status === 'success' ? '#166534' : '#991b1b',
-                  }}>
-                    {testResults.imap.status === 'success' ? '🟢 வெற்றியடைந்தது' : '🔴 தோல்வி'}
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.8rem', marginTop: 8, color: 'var(--color-text-secondary)' }}>
-                  சர்வர்: <code>{testResults.imap.server}:{testResults.imap.port}</code>
-                </div>
-                <p className="tamil-text" style={{ fontSize: '0.85rem', marginTop: 6, fontWeight: 600 }}>
-                  {testResults.imap.message}
-                </p>
-              </div>
-
-              {/* SMTP Result */}
-              <div className="card" style={{
-                borderLeft: `4px solid ${testResults.smtp.status === 'success' ? 'var(--color-tn-success)' : 'var(--color-tn-danger)'}`,
-                padding: 16,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>📤 SMTP வெளிச்செல்லும் இணைப்பு (Outbound)</span>
-                  <span style={{
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    fontSize: '0.7rem',
-                    fontWeight: 700,
-                    background: testResults.smtp.status === 'success' ? '#dcfce7' : '#fee2e2',
-                    color: testResults.smtp.status === 'success' ? '#166534' : '#991b1b',
-                  }}>
-                    {testResults.smtp.status === 'success' ? '🟢 வெற்றியடைந்தது' : '🔴 தோல்வி'}
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.8rem', marginTop: 8, color: 'var(--color-text-secondary)' }}>
-                  சர்வர்: <code>{testResults.smtp.server}:{testResults.smtp.port}</code>
-                </div>
-                <p className="tamil-text" style={{ fontSize: '0.85rem', marginTop: 6, fontWeight: 600 }}>
-                  {testResults.smtp.message}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Configuration Form */}
-          <div className="card" style={{ padding: 24 }}>
-            <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>
-                    IMAP Server (உள்வரும் சர்வர்)
-                  </label>
-                  <input
-                    type="text"
-                    value={mailConfig.imap_server}
-                    onChange={(e) => setMailConfig({ ...mailConfig, imap_server: e.target.value })}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-surface-border)', background: 'var(--color-surface-input)', color: 'var(--color-text-primary)' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>
-                    IMAP Port
-                  </label>
-                  <input
-                    type="number"
-                    value={mailConfig.imap_port}
-                    onChange={(e) => setMailConfig({ ...mailConfig, imap_port: e.target.value })}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-surface-border)', background: 'var(--color-surface-input)', color: 'var(--color-text-primary)' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>
-                    SMTP Server (வெளிச்செல்லும் சர்வர்)
-                  </label>
-                  <input
-                    type="text"
-                    value={mailConfig.smtp_server}
-                    onChange={(e) => setMailConfig({ ...mailConfig, smtp_server: e.target.value })}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-surface-border)', background: 'var(--color-surface-input)', color: 'var(--color-text-primary)' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>
-                    SMTP Port
-                  </label>
-                  <input
-                    type="number"
-                    value={mailConfig.smtp_port}
-                    onChange={(e) => setMailConfig({ ...mailConfig, smtp_port: e.target.value })}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-surface-border)', background: 'var(--color-surface-input)', color: 'var(--color-text-primary)' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>
-                    மின்னஞ்சல் முகவரி (Email / Username)
-                  </label>
-                  <input
-                    type="text"
-                    value={mailConfig.imap_user}
-                    placeholder="officer@erode.tn.gov.in"
-                    onChange={(e) => setMailConfig({ ...mailConfig, imap_user: e.target.value, smtp_user: e.target.value })}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-surface-border)', background: 'var(--color-surface-input)', color: 'var(--color-text-primary)' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>
-                    கடவுச்சொல் / App Password
-                  </label>
-                  <input
-                    type="password"
-                    placeholder="••••••••••••"
-                    value={mailConfig.imap_password}
-                    onChange={(e) => setMailConfig({ ...mailConfig, imap_password: e.target.value, smtp_password: e.target.value })}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-surface-border)', background: 'var(--color-surface-input)', color: 'var(--color-text-primary)' }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={handleTestConnection}
-                  disabled={testingConnection}
-                  style={{ gap: 8 }}
-                >
-                  <RefreshCw size={14} className={testingConnection ? 'animate-spin' : ''} />
-                  <span className="tamil-text">{testingConnection ? 'இணைப்பை சோதிக்கிறது...' : '🔗 இணைப்பைச் சோதி (Test Live Connection)'}</span>
-                </button>
-
-                <button type="submit" className="btn btn-primary" disabled={loading}>
-                  <Save size={16} />
-                  <span className="tamil-text">{loading ? 'சேமிக்கிறது...' : 'அமைப்புகளை சேமி'}</span>
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
       )}
     </div>

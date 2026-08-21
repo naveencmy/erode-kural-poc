@@ -5,7 +5,6 @@ import TnEmblem from '../icons/TnEmblem';
 import { cn } from '../../lib/utils';
 import {
   MessageSquare,
-  FileText,
   BarChart3,
   Stamp,
   Inbox,
@@ -19,7 +18,6 @@ import {
 
 const NAV_MODULES = [
   { id: 'general', icon: MessageSquare },
-  { id: 'document', icon: FileText },
   { id: 'data', icon: BarChart3 },
   { id: 'content', icon: Stamp },
   { id: 'bulk', icon: Inbox },

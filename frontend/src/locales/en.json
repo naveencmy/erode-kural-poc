@@ -3,7 +3,6 @@
   "app_subtitle": "AI Assistant System",
   "sidebar": {
     "general": "General Assistant",
-    "document": "Document Summary",
     "data": "Data & Visualization",
     "content": "Official Content",
     "bulk": "Bulk Workflow",
