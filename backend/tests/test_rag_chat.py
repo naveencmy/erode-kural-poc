@@ -10,11 +10,18 @@ client = TestClient(app)
 
 def test_rag_engine_greeting():
     rag = CollectorateRAGEngine()
-    res = rag.query("hi", officer_id="OFC001")
-    assert res is not None
-    assert "answer" in res
-    assert "வணக்கம் அலுவலர் OFC001" in res["answer"]
-    assert "sources" in res
+    # Tamil greeting
+    res_ta = rag.query("வணக்கம்", officer_id="OFC001")
+    assert res_ta is not None
+    assert "answer" in res_ta
+    assert "வணக்கம் அலுவலர் OFC001" in res_ta["answer"]
+
+    # English greeting
+    res_en = rag.query("hello", officer_id="OFC001")
+    assert res_en is not None
+    assert "answer" in res_en
+    assert "Good day Officer OFC001" in res_en["answer"]
+
 
 
 def test_rag_engine_knowledge_patta():

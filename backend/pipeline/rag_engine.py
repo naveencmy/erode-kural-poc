@@ -635,11 +635,27 @@ class CollectorateRAGEngine:
 
         combined_context = "\n\n".join(context_blocks)
 
+        # Check language of query
+        from modules.official_content.generator import detect_language
+        lang = detect_language(message)
+        is_english = (lang == "en")
+
         # Check for simple greeting when no context is attached
         msg_clean = message.strip().lower()
-        if msg_clean in ["hi", "hello", "வணக்கம்", "hai", "hey"] and not attached_doc:
-            return {
-                "answer": (
+        if msg_clean in ["hi", "hello", "வணக்கம்", "hai", "hey", "good morning", "good afternoon"] and not attached_doc:
+            if is_english:
+                greeting_text = (
+                    f"Good day Officer {officer_id}!\n\n"
+                    f"Welcome to the Erode District Collectorate AI Administrative Assistant. How may I assist you today?\n\n"
+                    f"**Key Operational Areas:**\n"
+                    f"• **Document Analysis & QA:** Upload files for automated summarization, insights, and queries.\n"
+                    f"• **Revenue & Patta Directives:** Guidelines on patta transfer, subdivision, and land survey procedures.\n"
+                    f"• **Social Welfare & Pensions:** Eligibility, schemes (OAP, widow pension, differently-abled aid).\n"
+                    f"• **Official Orders & Drafts:** Automated generation of Press Releases, Circulars, Memorandums, and Meeting Minutes.\n\n"
+                    f"Feel free to type your administrative query or attach a document."
+                )
+            else:
+                greeting_text = (
                     f"வணக்கம் அலுவலர் {officer_id}!\n\n"
                     f"ஈரோடு மாவட்ட ஆட்சியரக AI நிர்வாக உதவியாளர் சேவைக்கு வரவேற்கிறோம். நான் தங்களுக்கு எவ்வாறு உதவ முடியும்?\n\n"
                     f"**உதவக்கூடிய முக்கிய பகுதிகள்:**\n"
@@ -648,7 +664,9 @@ class CollectorateRAGEngine:
                     f"• **சமூக நல திட்டங்கள்:** முதியோர், விதவை மற்றும் மாற்றுத்திறனாளி உதவித்தொகை திட்டங்கள்.\n"
                     f"• **அலுவல் ஆணைகள் & வரைவுகள்:** செய்தி வெளியீடு, சுற்றறிக்கை மற்றும் கூட்டக் குறிப்புகள் தயாரிப்பு.\n\n"
                     f"தங்கள் வினவலை தட்டச்சு செய்யலாம் அல்லது ஆவணத்தை பதிவேற்றலாம்."
-                ),
+                )
+            return {
+                "answer": greeting_text,
                 "sources": ["Erode Collectorate Master Knowledge Base"],
                 "engine": "RAG Knowledge Base",
             }
@@ -657,17 +675,29 @@ class CollectorateRAGEngine:
         model_name = self._get_active_ollama_model()
         if model_name:
             try:
-                system_prompt = (
-                    "You are an expert AI administrative assistant for the Erode District Collectorate (ஈரோடு மாவட்ட ஆட்சியரகம்), Tamil Nadu. "
-                    "Provide clear, concise, professional, and well-structured answers in pure official Tamil (தமிழ்) formatted cleanly like Google Gemini. "
-                    "Do NOT use emojis. Use clean markdown formatting (paragraphs, bold headings, bullet points). "
-                    "Always base your answers strictly on the provided Collectorate Guidelines, Attached Document, and Database Context."
-                )
-                user_prompt = (
-                    f"Context / ஆவண தகவல்கள்:\n{combined_context if combined_context else 'பொதுவான மாவட்ட நிர்வாக நடைமுறைகள்'}\n\n"
-                    f"அலுவலர் {officer_id} வினவல்: {message}\n\n"
-                    f"தயவுசெய்து துல்லியமான அதிகாரப்பூர்வ விளக்கத்தை தமிழில் வழங்கவும்:"
-                )
+                if is_english:
+                    system_prompt = (
+                        "You are an expert AI administrative assistant for the Erode District Collectorate, Government of Tamil Nadu. "
+                        "Provide clear, concise, professional, and well-structured answers in formal administrative English formatted cleanly with Markdown. "
+                        "Do NOT use emojis. Base your answers strictly on the provided Collectorate Guidelines, Attached Document, and Database Context."
+                    )
+                    user_prompt = (
+                        f"Context / Reference Data:\n{combined_context if combined_context else 'General District Administrative Procedures'}\n\n"
+                        f"Officer {officer_id} Query: {message}\n\n"
+                        f"Please provide an accurate official administrative response in English:"
+                    )
+                else:
+                    system_prompt = (
+                        "You are an expert AI administrative assistant for the Erode District Collectorate (ஈரோடு மாவட்ட ஆட்சியரகம்), Tamil Nadu. "
+                        "Provide clear, concise, professional, and well-structured answers in pure official Tamil (தமிழ்) formatted cleanly like Google Gemini. "
+                        "Do NOT use emojis. Use clean markdown formatting (paragraphs, bold headings, bullet points). "
+                        "Always base your answers strictly on the provided Collectorate Guidelines, Attached Document, and Database Context."
+                    )
+                    user_prompt = (
+                        f"Context / ஆவண தகவல்கள்:\n{combined_context if combined_context else 'பொதுவான மாவட்ட நிர்வாக நடைமுறைகள்'}\n\n"
+                        f"அலுவலர் {officer_id} வினவல்: {message}\n\n"
+                        f"தயவுசெய்து துல்லியமான அதிகாரப்பூர்வ விளக்கத்தை தமிழில் வழங்கவும்:"
+                    )
 
                 resp = requests.post(
                     f"{self.ollama_url}/api/generate",
@@ -703,14 +733,18 @@ class CollectorateRAGEngine:
         # Fallback synthesis using grounded knowledge base
         if admin_guidelines:
             g = admin_guidelines[0]
-            answer = (
-                f"**{g['title']}**\n\n"
-                f"{g['content_ta']}\n\n"
-            )
-            if petitions:
-                answer += f"**தற்போது பரிசீலனையில் உள்ள தொடர்புடைய மனுக்கள் ({len(petitions)}):**\n"
-                for p in petitions:
-                    answer += f"• **{p['source_id']}** ({p['department']}) - நிலை: {p['status']}\n"
+            if is_english:
+                answer = f"**{g['title']}**\n\n{g.get('content_en') or g['content_ta']}\n\n"
+                if petitions:
+                    answer += f"**Related District Grievance Records ({len(petitions)}):**\n"
+                    for p in petitions:
+                        answer += f"• **{p['source_id']}** ({p['department']}) - Status: {p['status']}\n"
+            else:
+                answer = f"**{g['title']}**\n\n{g['content_ta']}\n\n"
+                if petitions:
+                    answer += f"**தற்போது பரிசீலனையில் உள்ள தொடர்புடைய மனுக்கள் ({len(petitions)}):**\n"
+                    for p in petitions:
+                        answer += f"• **{p['source_id']}** ({p['department']}) - நிலை: {p['status']}\n"
             return {
                 "answer": answer,
                 "sources": sources_list if sources_list else [g["title"]],
@@ -718,6 +752,22 @@ class CollectorateRAGEngine:
             }
 
         # Fallback for general status or unindexed query
+        if is_english:
+            return {
+                "answer": (
+                    f"Good day Officer {officer_id}!\n\n"
+                    f"Your query ('{message}') was received in the Erode District Collectorate knowledge base.\n\n"
+                    f"**District Administrative Guidelines Available:**\n"
+                    f"• Revenue Department patta transfer and land survey norms\n"
+                    f"• Social Security old-age and destitute pension schemes\n"
+                    f"• Drinking water, road, and PWD grievances\n"
+                    f"• Government e-Sevai citizen certificate workflows\n\n"
+                    f"You may specify file numbers or departmental procedures for detailed analysis."
+                ),
+                "sources": ["Erode Collectorate Master Knowledge Base"],
+                "engine": "RAG Knowledge Base",
+            }
+
         return {
             "answer": (
                 f"வணக்கம் அலுவலர் {officer_id}!\n\n"
@@ -732,3 +782,4 @@ class CollectorateRAGEngine:
             "sources": ["Erode Collectorate Master Knowledge Base"],
             "engine": "RAG Knowledge Base",
         }
+

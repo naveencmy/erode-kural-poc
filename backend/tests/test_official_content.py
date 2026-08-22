@@ -143,3 +143,36 @@ def test_export_preserves_all_body_paragraphs():
     assert "புனிதப் பயண நிதி உதவி" in doc_text
     assert "மாவட்ட வருவாய் அலுவலர்" in doc_text
 
+
+def test_bilingual_detection_and_generation():
+    gen = OfficialContentGenerator()
+
+    # Tamil generation
+    res_ta = gen.generate(
+        template_type="press_release",
+        subject="ஈரோடு மாவட்டத்தில் குடிநீர் திட்ட ஆய்வு",
+        details="1. பவானிசாகர் அணையிலிருந்து குடிநீர் விநியோகம் சீரமைப்பு.\n2. ரூ. 12 கோடி ஒதுக்கீடு.",
+        language="auto",
+    )
+    assert res_ta["language"] == "ta"
+    assert "ஈரோடு" in res_ta["generated_text"]
+    assert "செய்தி வெளியீடு" in res_ta["generated_text"] or "செய்திக்குறிப்பு" in res_ta["generated_text"]
+
+    # English generation
+    res_en = gen.generate(
+        template_type="press_release",
+        subject="Inspection of Jal Jeevan Mission Drinking Water Scheme",
+        details="1. Water supply pipelines inspected across 15 village panchayats.\n2. Rs. 15.4 Crores sanctioned for infrastructure upgrade.",
+        language="auto",
+    )
+    assert res_en["language"] == "en"
+    assert "District Collector" in res_en["generated_text"]
+    assert "PRESS RELEASE" in res_en["generated_text"]
+
+    # Export English to docx and pdf
+    docx_path = export_to_docx(res_en)
+    assert Path(docx_path).exists()
+    pdf_path = export_to_pdf(res_en)
+    assert Path(pdf_path).exists()
+
+

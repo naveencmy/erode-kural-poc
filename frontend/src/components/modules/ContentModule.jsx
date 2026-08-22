@@ -75,6 +75,7 @@ export default function ContentModule() {
   const [selectedTemplate, setSelectedTemplate] = useState(TEMPLATES[0].id);
   const activeTmpl = TEMPLATES.find(t => t.id === selectedTemplate) || TEMPLATES[0];
 
+  const [language, setLanguage] = useState('auto'); // 'auto', 'ta', 'en'
   const [subject, setSubject] = useState('');
   const [details, setDetails] = useState('');
   const [loading, setLoading] = useState(false);
@@ -99,7 +100,7 @@ export default function ContentModule() {
     setError(null);
     setIsEditing(false);
     try {
-      const res = await generateContent(selectedTemplate, { subject, details }, officerId);
+      const res = await generateContent(selectedTemplate, { subject, details, language }, officerId);
       setResult(res);
       setEditedText(res.generated_text);
       setIsFormOpen(false);
@@ -109,6 +110,7 @@ export default function ContentModule() {
       setLoading(false);
     }
   }
+
 
   async function handleExport() {
     setExporting(true);
@@ -171,7 +173,8 @@ export default function ContentModule() {
         }
       }
 
-      let finalPdfFooter = defaultFooter;
+      const isEnglishDoc = result.language === 'en';
+      let finalPdfFooter = isEnglishDoc ? 'Issued by: District Public Relations Officer, Erode District.' : defaultFooter;
       if (detectedFooter) {
         const normDet = detectedFooter.replace(/[\s\-_,.:;]/g, '');
         const normDef = defaultFooter.replace(/[\s\-_,.:;]/g, '');
@@ -180,15 +183,15 @@ export default function ContentModule() {
         }
       }
 
-      let refLabel = `செ.வெ.எண் - ${result.ref_number}`;
-      let titleType = 'அவர்களின் செய்திக்குறிப்பு-';
+      let refLabel = isEnglishDoc ? `PRESS RELEASE NO: ${result.ref_number}` : `செ.வெ.எண் - ${result.ref_number}`;
+      let titleType = isEnglishDoc ? 'PRESS RELEASE ISSUED BY THE DISTRICT COLLECTOR\nTHIRU S. KANDASAMY, I.A.S., ERODE DISTRICT' : 'அவர்களின் செய்திக்குறிப்பு-';
 
       if (result.template_type === 'circular') {
-        refLabel = `சுற்றறிக்கை எண் - ${result.ref_number}`;
-        titleType = 'அவர்களின் சுற்றறிக்கை-';
+        refLabel = isEnglishDoc ? `CIRCULAR NO: ${result.ref_number}` : `சுற்றறிக்கை எண் - ${result.ref_number}`;
+        titleType = isEnglishDoc ? 'OFFICE OF THE DISTRICT COLLECTOR, ERODE DISTRICT\nOFFICIAL CIRCULAR' : 'அவர்களின் சுற்றறிக்கை-';
       } else if (result.template_type === 'memo') {
-        refLabel = `குறிப்பாணை எண் - ${result.ref_number}`;
-        titleType = 'அவர்களின் அலுவலகக் குறிப்பாணை-';
+        refLabel = isEnglishDoc ? `MEMORANDUM NO: ${result.ref_number}` : `குறிப்பாணை எண் - ${result.ref_number}`;
+        titleType = isEnglishDoc ? 'OFFICE OF THE DISTRICT COLLECTOR, ERODE DISTRICT\nOFFICE MEMORANDUM' : 'அவர்களின் அலுவலகக் குறிப்பாணை-';
       }
 
       // Build styled HTML matching authentic original Erode District document with crisp page breaks
@@ -204,14 +207,15 @@ export default function ContentModule() {
         const cleanMinutesParas = rawParas.filter(p => {
           const isShort = p.length < 110;
           if (isShort && (
-            p.includes('கூட்ட நடவடிக்கைகள்') && p.includes('தலைமையில்') ||
-            p.includes('முன்னிலை:') ||
-            p.startsWith('எண்:') ||
-            p.startsWith('பொருள்:') ||
-            p.startsWith('பார்வை:') ||
+            (p.includes('கூட்ட நடவடிக்கைகள்') && p.includes('தலைமையில்')) ||
+            p.includes('PROCEEDINGS OF THE DISTRICT COLLECTOR') ||
+            p.includes('முன்னிலை:') || p.includes('PRESENT:') ||
+            p.startsWith('எண்:') || p.startsWith('Roc. No:') ||
+            p.startsWith('பொருள்:') || p.startsWith('Sub:') ||
+            p.startsWith('பார்வை:') || p.startsWith('Ref:') ||
             p === '<><><>' ||
-            p.includes('ஓம்/-ச.கந்தசாமி') ||
-            p.includes('நேர்முக உதவியாளர்') ||
+            p.includes('ஓம்/-ச.கந்தசாமி') || p.includes('Sd/- S. Kandasamy') ||
+            p.includes('நேர்முக உதவியாளர்') || p.includes('Personal Assistant') ||
             p.startsWith('----------------')
           )) {
             return false;
@@ -219,24 +223,67 @@ export default function ContentModule() {
           return true;
         });
 
+        const headerBlock = isEnglishDoc ? `
+          <div style="text-align: center; font-weight: bold; font-size: 12pt; color: #000000; line-height: 1.45; margin-bottom: 12px;">
+            PROCEEDINGS OF THE DISTRICT COLLECTOR & DISTRICT MAGISTRATE, ERODE<br/>
+            MINUTES OF REVIEW MEETING: ${result.subject.toUpperCase()}<br/>
+            <span style="font-size: 11pt;">PRESENT: THIRU S. KANDASAMY, I.A.S., DISTRICT COLLECTOR</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 10.5pt; color: #000000; margin-bottom: 10px; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 6px 0;">
+            <span>Roc. No: ${result.ref_number}/2026</span>
+            <span>Dated: ${result.date_display}</span>
+          </div>
+          <div style="font-size: 10.5pt; color: #000000; margin-bottom: 14px; line-height: 1.5;">
+            <div style="font-weight: bold;">Sub: ${result.subject} – Minutes of Review Meeting – Approval and Orders – Issued.</div>
+            <div style="color: #222; margin-top: 4px;">Ref: G.O. Ms. No. 78, Agriculture & Farmers Welfare Department, dated 17.02.2016.</div>
+            <div style="text-align: center; font-weight: bold; letter-spacing: 2px; margin-top: 6px;">&lt;&gt;&lt;&gt;&lt;&gt;</div>
+          </div>
+        ` : `
+          <div style="text-align: center; font-weight: bold; font-size: 12pt; color: #000000; line-height: 1.45; margin-bottom: 12px;">
+            ஈரோடு மாவட்ட ஆட்சித்தலைவர் அவர்கள் தலைமையில் ${result.date_display} அன்று<br/>
+            நடைபெற்ற ${result.subject} கூட்ட நடவடிக்கைகள்<br/>
+            <span style="font-size: 11pt;">முன்னிலை: திரு.ச.கந்தசாமி, இ.ஆ.ப.,</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 10.5pt; color: #000000; margin-bottom: 10px; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 6px 0;">
+            <span>எண்: வே/${result.ref_number}/2026</span>
+            <span>நாள்: ${result.date_display}</span>
+          </div>
+          <div style="font-size: 10.5pt; color: #000000; margin-bottom: 14px; line-height: 1.5;">
+            <div style="font-weight: bold;">பொருள்: ${result.subject} – கூட்ட நடவடிக்கைகள் – ஒப்புதல் அளித்தல் – தொடர்பாக.</div>
+            <div style="color: #222; margin-top: 4px;">பார்வை: அரசாணை எண்: 78 வேளாண்மை (வே.உ.6) துறை, நாள்: 17.02.2016.</div>
+            <div style="text-align: center; font-weight: bold; letter-spacing: 2px; margin-top: 6px;">&lt;&gt;&lt;&gt;&lt;&gt;</div>
+          </div>
+        `;
+
+        const footerBlock = isEnglishDoc ? `
+          <div style="display: flex; justify-content: flex-end; text-align: right; font-weight: bold; font-size: 10.5pt; color: #000000; margin-bottom: 15px;">
+            <div>
+              Sd/- S. Kandasamy<br/>
+              District Collector,<br/>
+              Erode District.
+            </div>
+          </div>
+          <div style="text-align: center; font-size: 10pt; color: #333333; line-height: 1.5;">
+            <div>/ By Order /</div>
+            <div style="margin-top: 10px; font-weight: bold;">Personal Assistant to District Collector, District Collectorate, Erode.</div>
+          </div>
+        ` : `
+          <div style="display: flex; justify-content: flex-end; text-align: right; font-weight: bold; font-size: 10.5pt; color: #000000; margin-bottom: 15px;">
+            <div>
+              ஓம்/-ச.கந்தசாமி<br/>
+              மாவட்ட ஆட்சித்தலைவர்,<br/>
+              ஈரோடு.
+            </div>
+          </div>
+          <div style="text-align: center; font-size: 10pt; color: #333333; line-height: 1.5;">
+            <div>/உத்தரவுப்படி/</div>
+            <div style="margin-top: 10px; font-weight: bold;">நேர்முக உதவியாளர், மாவட்ட ஆட்சியர் அலுவலகம், ஈரோடு.</div>
+          </div>
+        `;
+
         container.innerHTML = `
           <div style="page-break-inside: avoid; break-inside: avoid;">
-            <div style="text-align: center; font-weight: bold; font-size: 12pt; color: #000000; line-height: 1.45; margin-bottom: 12px;">
-              ஈரோடு மாவட்ட ஆட்சித்தலைவர் அவர்கள் தலைமையில் ${result.date_display} அன்று<br/>
-              நடைபெற்ற ${result.subject} கூட்ட நடவடிக்கைகள்<br/>
-              <span style="font-size: 11pt;">முன்னிலை: திரு.ச.கந்தசாமி, இ.ஆ.ப.,</span>
-            </div>
-
-            <div style="display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 10.5pt; color: #000000; margin-bottom: 10px; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 6px 0;">
-              <span>எண்: வே/${result.ref_number}/2026</span>
-              <span>நாள்: ${result.date_display}</span>
-            </div>
-
-            <div style="font-size: 10.5pt; color: #000000; margin-bottom: 14px; line-height: 1.5;">
-              <div style="font-weight: bold;">பொருள்: ${result.subject} – கூட்ட நடவடிக்கைகள் – ஒப்புதல் அளித்தல் – தொடர்பாக.</div>
-              <div style="color: #222; margin-top: 4px;">பார்வை: அரசாணை எண்: 78 வேளாண்மை (வே.உ.6) துறை, நாள்: 17.02.2016.</div>
-              <div style="text-align: center; font-weight: bold; letter-spacing: 2px; margin-top: 6px;">&lt;&gt;&lt;&gt;&lt;&gt;</div>
-            </div>
+            ${headerBlock}
           </div>
 
           <div style="color: #000000; font-size: 10.5pt; line-height: 1.75;">
@@ -248,32 +295,30 @@ export default function ContentModule() {
           </div>
 
           <div style="page-break-inside: avoid; break-inside: avoid; margin-top: 25px;">
-            <div style="display: flex; justify-content: flex-end; text-align: right; font-weight: bold; font-size: 10.5pt; color: #000000; margin-bottom: 15px;">
-              <div>
-                ஓம்/-ச.கந்தசாமி<br/>
-                மாவட்ட ஆட்சித்தலைவர்,<br/>
-                ஈரோடு.
-              </div>
-            </div>
-            <div style="text-align: center; font-size: 10pt; color: #333333; line-height: 1.5;">
-              <div>/உத்தரவுப்படி/</div>
-              <div style="margin-top: 10px; font-weight: bold;">நேர்முக உதவியாளர், மாவட்ட ஆட்சியர் அலுவலகம், ஈரோடு.</div>
-            </div>
+            ${footerBlock}
           </div>
         `;
       } else {
+        const topSubHeader = isEnglishDoc ? `
+          <div style="font-weight: bold; font-size: 13pt; color: #000000; line-height: 1.45;">
+            ${titleType.replace(/\n/g, '<br/>')}
+          </div>
+        ` : `
+          <div style="font-weight: bold; font-size: 13pt; color: #000000; line-height: 1.45;">
+            ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,<br/>
+            ${titleType}
+          </div>
+        `;
+
         container.innerHTML = `
           <div style="page-break-inside: avoid; break-inside: avoid;">
             <div style="display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 11pt; color: #000000; margin-bottom: 20px;">
               <span>${refLabel}</span>
-              <span>நாள் - ${result.date_display}</span>
+              <span>${isEnglishDoc ? 'DATE' : 'நாள்'} - ${result.date_display}</span>
             </div>
 
             <div style="text-align: center; margin-bottom: 22px;">
-              <div style="font-weight: bold; font-size: 13pt; color: #000000; line-height: 1.45;">
-                ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,<br/>
-                ${titleType}
-              </div>
+              ${topSubHeader}
               <div style="font-weight: bold; color: #000000; letter-spacing: 2px; margin-top: 6px;">----</div>
             </div>
           </div>
@@ -291,6 +336,7 @@ export default function ContentModule() {
           </div>
         `;
       }
+
 
       const opt = {
         margin: [12, 12, 12, 12],
@@ -431,13 +477,47 @@ export default function ContentModule() {
 
         {isFormOpen && (
           <form onSubmit={handleGenerate} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Language Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, paddingBottom: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                  வெளியீட்டு மொழி / Output Language:
+                </span>
+                {[
+                  { id: 'auto', label: 'Auto (தானியங்கி)' },
+                  { id: 'ta', label: 'தமிழ் (Tamil)' },
+                  { id: 'en', label: 'English' },
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setLanguage(opt.id)}
+                    style={{
+                      padding: '3px 10px',
+                      borderRadius: 6,
+                      fontSize: '0.78rem',
+                      fontWeight: language === opt.id ? 700 : 500,
+                      border: language === opt.id ? `1.5px solid ${activeTmpl.color}` : '1px solid var(--color-surface-border)',
+                      background: language === opt.id ? `${activeTmpl.color}20` : 'transparent',
+                      color: language === opt.id ? activeTmpl.color : 'var(--color-text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div>
               <label className="tamil-text" style={{ fontSize: '0.95rem', fontWeight: 600, display: 'block', marginBottom: 4, color: 'var(--color-text-primary)' }}>
                 பொருள் (Subject) <span style={{ color: activeTmpl.color }}>*</span>
               </label>
               <textarea
                 rows={2}
-                placeholder={activeTmpl.placeholder}
+                placeholder={language === 'en' ? 'e.g. Jal Jeevan Mission — Water Connection Scheme for 1,200 households in Erode District' : activeTmpl.placeholder}
+
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 required
@@ -529,6 +609,13 @@ export default function ContentModule() {
                   <span style={{ fontWeight: 600, color: activeTmpl.color }}>{result.ref_number}</span>
                   <span>·</span>
                   <span>{result.date_display}</span>
+                  <span>·</span>
+                  <span style={{
+                    padding: '1px 8px', borderRadius: 10, fontSize: '0.68rem', fontWeight: 700,
+                    background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)',
+                  }}>
+                    {result.language === 'en' ? 'English' : 'தமிழ்'}
+                  </span>
                   {isEditing && (
                     <span style={{
                       padding: '1px 8px', borderRadius: 10, fontSize: '0.68rem', fontWeight: 700,
@@ -539,6 +626,7 @@ export default function ContentModule() {
                     </span>
                   )}
                 </div>
+
               </div>
             </div>
 

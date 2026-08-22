@@ -1,14 +1,15 @@
-"""Official Content Generator — Template + LLM Hybrid Engine.
+"""Official Content Generator — Template + LLM Hybrid Engine (Bilingual Tamil & English).
 
 Generates formal Tamil Nadu government documents using Jinja2 templates.
-Optionally enhances content via local Ollama LLM (qwen2.5:7b) with
-deterministic fallback when LLM is unavailable.
+Intelligently generates Tamil or English responses based on query language,
+with local Ollama LLM (qwen2.5:7b) and robust deterministic fallbacks.
 """
 
 import logging
+import re
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import jinja2
 import requests
@@ -23,9 +24,28 @@ _jinja_env = jinja2.Environment(undefined=jinja2.Undefined)
 
 
 # ---------------------------------------------------------------------------
-# LLM Prompts for each template type (Tamil-first bilingual)
+# Language Detection
 # ---------------------------------------------------------------------------
-LLM_PROMPTS = {
+def detect_language(text: str) -> str:
+    """Detect whether input is primarily Tamil ('ta') or English ('en')."""
+    if not text or not text.strip():
+        return "ta"
+    tamil_chars = len(re.findall(r'[\u0B80-\u0BFF]', text))
+    latin_chars = len(re.findall(r'[a-zA-Z]', text))
+    
+    if tamil_chars > 0 and (tamil_chars >= latin_chars * 0.15 or latin_chars == 0):
+        return "ta"
+    elif latin_chars > 0 and tamil_chars == 0:
+        return "en"
+    elif tamil_chars > latin_chars:
+        return "ta"
+    return "en"
+
+
+# ---------------------------------------------------------------------------
+# LLM Prompts — Tamil (தமிழ் அரசு நடை)
+# ---------------------------------------------------------------------------
+LLM_PROMPTS_TA = {
     "press_release": (
         "You are the official Public Relations Officer (செய்தி மக்கள் தொடர்பு அலுவலர்) for the Erode District Collectorate (ஈரோடு மாவட்ட ஆட்சியரகம்), Tamil Nadu.\n"
         "Draft an authentic, publication-ready Tamil Government Press Release (செய்தி வெளியீடு) strictly matching the real Erode District DIPR official format and administrative tone.\n\n"
@@ -123,9 +143,105 @@ LLM_PROMPTS = {
 }
 
 
-import re
-from typing import Any, Dict, List, Optional, Tuple
+# ---------------------------------------------------------------------------
+# LLM Prompts — English (Government of Tamil Nadu Official Administrative Style)
+# ---------------------------------------------------------------------------
+LLM_PROMPTS_EN = {
+    "press_release": (
+        "You are the official Public Relations Officer (DIPR) for the Erode District Collectorate, Government of Tamil Nadu.\n"
+        "Draft an authentic, publication-ready Official Government Press Release strictly matching the real Erode District administration format and authoritative tone in English.\n\n"
+        "### STRUCTURE & RULES:\n"
+        "1. LEAD PARAGRAPH:\n"
+        "   - Open with: 'Thiru S. Kandasamy, I.A.S., District Collector and District Magistrate of Erode District, conducted a comprehensive review and inspection regarding {subject} in Erode District today ({date}).'\n\n"
+        "2. DETAILED BODY PARAGRAPHS:\n"
+        "   - Write 2 to 4 rich, flowing paragraphs in formal government English.\n"
+        "   - Thoroughly integrate all key points, statistics, numbers, rupee amounts (Rs. ... Lakhs / Crores), beneficiary counts, village/taluk names provided in the user's input.\n"
+        "   - Naturally reference Erode district taluks (Erode, Perundurai, Bhavani, Gobichettipalayam, Sathyamangalam, Modakkurichi, Anthiyur, Kodumudi, Nambiyur, Thalavadi) where relevant.\n"
+        "   - Detail administrative directives, quality inspection standards, welfare delivery, or grievance resolution measures.\n\n"
+        "3. PARTICIPATING OFFICIALS:\n"
+        "   - End with a dedicated paragraph mentioning accompanying officers (e.g., District Revenue Officer Thiru S. Santhakumar, Project Director - DRDA, Revenue Divisional Officers, Tahsildars, Block Development Officers, and district departmental heads).\n\n"
+        "4. STRICT FORMATTING:\n"
+        "   - Formal administrative English.\n"
+        "   - Output ONLY the body paragraphs. Do NOT include Press Release header or footer (the master template handles them).\n"
+        "   - Do NOT invent false data; convert the provided details into authentic government press release prose.\n\n"
+        "Input Data:\n"
+        "Subject: {subject}\n"
+        "Key Points: {details}\n"
+        "Date: {date}\n\n"
+        "Generate the official Erode District Press Release body in English:"
+    ),
+    "circular": (
+        "You are the senior administrative drafting officer for the Erode District Collectorate, Government of Tamil Nadu.\n"
+        "Draft an authentic, formal, and authoritative Tamil Nadu Government Official Circular issued under the orders of the District Collector (Thiru S. Kandasamy, I.A.S.) in English.\n\n"
+        "### STRUCTURE & DIRECTIVES:\n"
+        "1. ADMINISTRATIVE PURPOSE & CONTEXT:\n"
+        "   - Open with: 'In connection with {subject} in Erode District, all Head of Departments, Tahsildars, Block Development Officers, Municipal Commissioners, and field executing officers are hereby issued the following mandatory administrative guidelines and directives for strict compliance.'\n\n"
+        "2. DETAILED ACTION POINTS & DIRECTIVES:\n"
+        "   - Write 2 to 4 structured, cohesive paragraphs in formal directive government English.\n"
+        "   - Use formal administrative terms: 'are hereby directed', 'must be strictly adhered to', 'immediate action shall be taken'.\n"
+        "   - Thoroughly incorporate all points, deadlines, review mechanisms, inspection squads, guidelines, and figures from user input.\n"
+        "   - Explicitly mention concerned administrative divisions/taluks of Erode where applicable.\n\n"
+        "3. TIMELINE & COMPLIANCE WARNING:\n"
+        "   - Detail reporting timelines (e.g. weekly progress report / immediate field inspection report).\n"
+        "   - State clearly that any delay, negligence, or non-compliance will invite disciplinary proceedings under the Tamil Nadu Civil Services (Discipline & Appeal) Rules as ordered by District Collector Thiru S. Kandasamy, I.A.S.\n\n"
+        "4. STRICT FORMATTING:\n"
+        "   - Pure formal government administrative English.\n"
+        "   - Output ONLY the body paragraphs (do NOT include header lines, reference numbers, or signature blocks).\n\n"
+        "Input Data:\n"
+        "Subject: {subject}\n"
+        "Key Guidelines/Details: {details}\n"
+        "Date: {date}\n\n"
+        "Generate the official Erode District Circular body in English:"
+    ),
+    "memo": (
+        "You are the senior administrative drafting officer for the Erode District Collectorate, Government of Tamil Nadu.\n"
+        "Draft an authentic, formal, and structured Office Memorandum / Official Order issued under the orders of District Collector Thiru S. Kandasamy, I.A.S. or District Revenue Officer Thiru S. Santhakumar in English.\n\n"
+        "### STRUCTURE & DIRECTIVES:\n"
+        "1. ORDER / MEMO CONTEXT:\n"
+        "   - Open with clear government context: 'In connection with {subject} in Erode District, the following administrative guidelines, operational procedures, and orders are hereby notified for immediate compliance.'\n\n"
+        "2. DETAILED TERMS, CLAUSES & STATISTICS:\n"
+        "   - Format conditions, rules, guidelines, eligibility criteria, or financial breakdown into clear numbered points (1., 2., 3...) or bold subheadings.\n"
+        "   - Naturally incorporate all statistics, beneficiaries count, taluks, financial amounts (Rs.), and dates given in the input.\n\n"
+        "3. DIRECTIVE CLOSING / COMPLIANCE:\n"
+        "   - End with clear administrative instructions: 'All concerned departmental officers, institutional heads, and field staff are instructed to ensure strict compliance within the stipulated timeframe as directed by the District Collector, Erode.'\n\n"
+        "4. STRICT FORMATTING:\n"
+        "   - Pure formal government administrative English.\n"
+        "   - Output ONLY the body paragraphs.\n\n"
+        "Input Data:\n"
+        "Subject: {subject}\n"
+        "Details/Points: {details}\n"
+        "Date: {date}\n\n"
+        "Generate the official Erode District Office Memorandum body in English:"
+    ),
+    "meeting_minutes": (
+        "You are the senior administrative recording officer for the Erode District Collectorate, Government of Tamil Nadu.\n"
+        "Draft the authentic, formal, and structured proceedings of an official government review meeting chaired by District Collector Thiru S. Kandasamy, I.A.S. in English.\n\n"
+        "### STRUCTURE & DIRECTIVES:\n"
+        "1. OPENING PROCEEDINGS:\n"
+        "   - Formal opening: 'The review meeting regarding {subject} was held on {date} at 10:30 AM at the Collectorate Conference Hall, Erode, chaired by Thiru S. Kandasamy, I.A.S., District Collector. The District Revenue Officer, departmental heads, association representatives, and stakeholders attended the meeting.'\n\n"
+        "2. REPRESENTATIONS & DEMANDS:\n"
+        "   - Use bold subheadings for each association / speaker / agenda topic.\n"
+        "   - Write out their points clearly in formal administrative English based on user input.\n"
+        "   - Add department action tags where applicable: '(Action: Revenue Department, Water Resources, Agriculture, TANGEDCO, DRDA)'.\n\n"
+        "3. DEPARTMENTAL RESPONSES & ACTIONS:\n"
+        "   - Detail the official status, sanction decisions, and timeline for action under department subheadings.\n\n"
+        "4. DISTRICT COLLECTOR'S CONCLUDING DIRECTIVES:\n"
+        "   - Concluding instructions under 'Directives of District Collector:' emphasizing immediate time-bound redressal of grievances, field inspections, and transparent execution.\n\n"
+        "5. STRICT FORMATTING:\n"
+        "   - Pure formal government administrative English.\n"
+        "   - Output ONLY the body proceedings content.\n\n"
+        "Input Data:\n"
+        "Subject: {subject}\n"
+        "Proceedings / Points: {details}\n"
+        "Date: {date}\n\n"
+        "Generate the official Erode District Meeting Minutes body in English:"
+    ),
+}
 
+
+# ---------------------------------------------------------------------------
+# Footnote & Footer Separation Helpers
+# ---------------------------------------------------------------------------
 def _extract_footer_from_points(points: List[str]) -> Tuple[List[str], Optional[str]]:
     """Separates any footer / release authority line from the user key points."""
     clean_points = []
@@ -139,7 +255,10 @@ def _extract_footer_from_points(points: List[str]) -> Tuple[List[str], Optional[
             "செய்தி மக்கள் தொடர்பு அலுவலர்" in raw or
             raw.startswith("இப்படிக்கு") or
             raw.startswith("நேர்முக உதவியாளர்") or
-            raw.startswith("மாவட்ட ஆட்சித்தலைவர் சார்பாக")
+            raw.startswith("மாவட்ட ஆட்சித்தலைவர் சார்பாக") or
+            raw.lower().startswith("issued by") or
+            "public relations officer" in raw.lower() or
+            raw.lower().startswith("by order")
         )
         if is_footer and len(raw) < 140:
             found_footer = raw
@@ -148,8 +267,57 @@ def _extract_footer_from_points(points: List[str]) -> Tuple[List[str], Optional[
     return clean_points, found_footer
 
 
-def _format_circular_fallback(subject: str, details: str, date_str: str) -> str:
-    """Build an authentic Erode District Collectorate circular fallback without LLM."""
+# ---------------------------------------------------------------------------
+# Deterministic Fallback Generators — Tamil
+# ---------------------------------------------------------------------------
+def _format_press_release_fallback_ta(subject: str, details: str, date_str: str) -> str:
+    """Build an authentic Erode District DIPR press release fallback in Tamil."""
+    clean_subject = subject.strip()
+    raw_points = [p.strip() for p in details.split("\n") if p.strip()]
+    points, _ = _extract_footer_from_points(raw_points)
+
+    lead_para = (
+        f"ஈரோடு மாவட்டம், மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப., அவர்கள் தலைமையில் "
+        f"{clean_subject} குறித்த முக்கிய ஆய்வு மற்றும் பணிகள் இன்று ({date_str}) "
+        f"மாவட்ட ஆட்சித்தலைவர் அலுவலகம் மற்றும் களப்பகுதிகளில் நேரில் பார்வையிட்டு ஆய்வு மேற்கொள்ளப்பட்டது."
+    )
+
+    body_paras = []
+    if points:
+        first_group = points[:len(points)//2 + 1] if len(points) > 1 else points
+        second_group = points[len(points)//2 + 1:] if len(points) > 1 else []
+
+        p1_text = " ".join(first_group)
+        body_paras.append(
+            f"ஈரோடு மாவட்டத்தில் பொதுமக்களின் நலன் கருதி மேற்கொள்ளப்பட்டு வரும் வளர்ச்சித் திட்டப் பணிகளில், "
+            f"{p1_text}. இப்பணிகளை விரைவாகவும், அரசு நிர்ணயித்த தரக்கட்டுப்பாடுகளுக்கு உட்பட்டும் முடித்திட "
+            f"மாவட்ட ஆட்சித்தலைவர் அவர்கள் துறை அலுவலர்களுக்கு உத்தரவிட்டுள்ளார்."
+        )
+
+        if second_group:
+            p2_text = " ".join(second_group)
+            body_paras.append(
+                f"தொடர்ந்து, {p2_text}. திட்டப் பணிகளின் முன்னேற்றம் மற்றும் பயனாளிகளுக்கு சென்றடையும் "
+                f"சேவைகள் குறித்து அலுவலர்களிடம் விரிவாக கேட்டறிந்து, பணிகளை துரிதப்படுத்த அறிவுறுத்தப்பட்டது."
+            )
+    else:
+        body_paras.append(
+            f"ஈரோடு மாவட்டத்தில் செயல்படுத்தப்பட்டு வரும் அரசு நலத்திட்டங்கள் மற்றும் வளர்ச்சிப் பணிகள் "
+            f"செம்மையாக நடைபெறுவதை உறுதிசெய்யும் வகையில், துறை அலுவலர்கள் ஒருங்கிணைந்து செயல்பட வேண்டும் "
+            f"என்று மாவட்ட ஆட்சித்தலைவர் அவர்கள் அறிவுறுத்தினார்."
+        )
+
+    officials_para = (
+        "இந்நிகழ்வின் போது, மாவட்ட வருவாய் அலுவலர் திரு.சு.சாந்தகுமார், திட்ட இயக்குநர் (ஊரக வளர்ச்சி முகமை), "
+        "வருவாய் கோட்டாட்சியர், வட்டாட்சியர், வட்டார வளர்ச்சி அலுவலர்கள் மற்றும் தொடர்புடைய துறை சார்ந்த "
+        "அலுவலர்கள் பலர் கலந்து கொண்டனர்."
+    )
+
+    return "\n\n".join([lead_para] + body_paras + [officials_para])
+
+
+def _format_circular_fallback_ta(subject: str, details: str, date_str: str) -> str:
+    """Build an authentic Erode District Collectorate circular fallback in Tamil."""
     clean_subject = subject.strip()
     raw_points = [p.strip() for p in details.split("\n") if p.strip()]
     points, _ = _extract_footer_from_points(raw_points)
@@ -191,12 +359,11 @@ def _format_circular_fallback(subject: str, details: str, date_str: str) -> str:
         "உத்தரவிட்டுள்ளார்."
     )
 
-    all_paras = [p1] + body_paras + [p_warning]
-    return "\n\n".join(all_paras)
+    return "\n\n".join([p1] + body_paras + [p_warning])
 
 
-def _format_memo_fallback(subject: str, details: str, date_str: str) -> str:
-    """Build an authentic Erode District Office Memorandum / Order fallback without LLM."""
+def _format_memo_fallback_ta(subject: str, details: str, date_str: str) -> str:
+    """Build an authentic Erode District Office Memorandum / Order fallback in Tamil."""
     clean_subject = subject.strip()
     raw_points = [p.strip() for p in details.split("\n") if p.strip()]
     points, _ = _extract_footer_from_points(raw_points)
@@ -228,12 +395,11 @@ def _format_memo_fallback(subject: str, details: str, date_str: str) -> str:
         "தெரிவித்துள்ளார்கள்."
     )
 
-    all_paras = [p_intro] + body_sections + [p_close]
-    return "\n\n".join(all_paras)
+    return "\n\n".join([p_intro] + body_sections + [p_close])
 
 
-def _format_meeting_minutes_fallback(subject: str, details: str, date_str: str) -> str:
-    """Build an authentic Erode District Meeting Minutes fallback without LLM."""
+def _format_meeting_minutes_fallback_ta(subject: str, details: str, date_str: str) -> str:
+    """Build an authentic Erode District Meeting Minutes fallback in Tamil."""
     clean_subject = subject.strip()
     points = [p.strip() for p in details.split("\n") if p.strip()]
 
@@ -273,24 +439,24 @@ def _format_meeting_minutes_fallback(subject: str, details: str, date_str: str) 
         "மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப., அவர்கள் அறிவுறுத்தினார்."
     )
 
-    all_content = [p_intro, "\n".join(body_sections), p_collector]
-    return "\n\n".join(all_content)
+    return "\n\n".join([p_intro, "\n".join(body_sections), p_collector])
 
 
-def _format_press_release_fallback(subject: str, details: str, date_str: str) -> str:
-    """Build an authentic Erode District DIPR press release fallback without LLM."""
+# ---------------------------------------------------------------------------
+# Deterministic Fallback Generators — English
+# ---------------------------------------------------------------------------
+def _format_press_release_fallback_en(subject: str, details: str, date_str: str) -> str:
+    """Build an authentic Erode District DIPR press release fallback in English."""
     clean_subject = subject.strip()
     raw_points = [p.strip() for p in details.split("\n") if p.strip()]
     points, _ = _extract_footer_from_points(raw_points)
 
-    # Paragraph 1: Lead paragraph
     lead_para = (
-        f"ஈரோடு மாவட்டம், மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப., அவர்கள் தலைமையில் "
-        f"{clean_subject} குறித்த முக்கிய ஆய்வு மற்றும் பணிகள் இன்று ({date_str}) "
-        f"மாவட்ட ஆட்சித்தலைவர் அலுவலகம் மற்றும் களப்பகுதிகளில் நேரில் பார்வையிட்டு ஆய்வு மேற்கொள்ளப்பட்டது."
+        f"Thiru S. Kandasamy, I.A.S., District Collector and District Magistrate of Erode District, "
+        f"conducted an extensive review and inspection regarding {clean_subject} "
+        f"in Erode District today ({date_str})."
     )
 
-    # Paragraph 2 & 3: Detailed body points
     body_paras = []
     if points:
         first_group = points[:len(points)//2 + 1] if len(points) > 1 else points
@@ -298,74 +464,156 @@ def _format_press_release_fallback(subject: str, details: str, date_str: str) ->
 
         p1_text = " ".join(first_group)
         body_paras.append(
-            f"ஈரோடு மாவட்டத்தில் பொதுமக்களின் நலன் கருதி மேற்கொள்ளப்பட்டு வரும் வளர்ச்சித் திட்டப் பணிகளில், "
-            f"{p1_text}. இப்பணிகளை விரைவாகவும், அரசு நிர்ணயித்த தரக்கட்டுப்பாடுகளுக்கு உட்பட்டும் முடித்திட "
-            f"மாவட்ட ஆட்சித்தலைவர் அவர்கள் துறை அலுவலர்களுக்கு உத்தரவிட்டுள்ளார்."
+            f"Reviewing the development and welfare measures undertaken for the benefit of the citizens in Erode District, "
+            f"{p1_text}. The District Collector instructed the concerned departmental officials to execute these projects "
+            f"expeditiously while maintaining the highest quality standards prescribed by the Government."
         )
 
         if second_group:
             p2_text = " ".join(second_group)
             body_paras.append(
-                f"தொடர்ந்து, {p2_text}. திட்டப் பணிகளின் முன்னேற்றம் மற்றும் பயனாளிகளுக்கு சென்றடையும் "
-                f"சேவைகள் குறித்து அலுவலர்களிடம் விரிவாக கேட்டறிந்து, பணிகளை துரிதப்படுத்த அறிவுறுத்தப்பட்டது."
+                f"Furthermore, {p2_text}. Detailed discussions were held with the executing authorities on the progress "
+                f"of works and delivery of public entitlements to ensure smooth and time-bound completion."
             )
     else:
         body_paras.append(
-            f"ஈரோடு மாவட்டத்தில் செயல்படுத்தப்பட்டு வரும் அரசு நலத்திட்டங்கள் மற்றும் வளர்ச்சிப் பணிகள் "
-            f"செம்மையாக நடைபெறுவதை உறுதிசெய்யும் வகையில், துறை அலுவலர்கள் ஒருங்கிணைந்து செயல்பட வேண்டும் "
-            f"என்று மாவட்ட ஆட்சித்தலைவர் அவர்கள் அறிவுறுத்தினார்."
+            f"The District Collector emphasized that all state government welfare schemes and public development works "
+            f"must be executed with dedicated coordination and seamless service delivery across the district."
         )
 
-    # Paragraph 4: Accompanying Officials
     officials_para = (
-        "இந்நிகழ்வின் போது, மாவட்ட வருவாய் அலுவலர் திரு.சு.சாந்தகுமார், திட்ட இயக்குநர் (ஊரக வளர்ச்சி முகமை), "
-        "வருவாய் கோட்டாட்சியர், வட்டாட்சியர், வட்டார வளர்ச்சி அலுவலர்கள் மற்றும் தொடர்புடைய துறை சார்ந்த "
-        "அலுவலர்கள் பலர் கலந்து கொண்டனர்."
+        "District Revenue Officer Thiru S. Santhakumar, Project Director (DRDA), Revenue Divisional Officers, "
+        "Tahsildars, Block Development Officers, and district-level departmental officers were present during the review."
     )
 
-    all_paras = [lead_para] + body_paras + [officials_para]
-    return "\n\n".join(all_paras)
+    return "\n\n".join([lead_para] + body_paras + [officials_para])
+
+
+def _format_circular_fallback_en(subject: str, details: str, date_str: str) -> str:
+    """Build an authentic Erode District Collectorate circular fallback in English."""
+    clean_subject = subject.strip()
+    raw_points = [p.strip() for p in details.split("\n") if p.strip()]
+    points, _ = _extract_footer_from_points(raw_points)
+
+    p1 = (
+        f"In connection with {clean_subject} in Erode District, all Heads of Departments, Tahsildars, "
+        f"Block Development Officers, Municipal Commissioners, and field-level executing officers are hereby "
+        f"issued the following mandatory administrative guidelines and operational directives for strict compliance."
+    )
+
+    body_paras = []
+    if points:
+        first_group = points[:len(points)//2 + 1] if len(points) > 1 else points
+        second_group = points[len(points)//2 + 1:] if len(points) > 1 else []
+
+        p_directives = " ".join(first_group)
+        body_paras.append(
+            f"1. Administrative Directives: {p_directives}. All concerned officers must ensure prompt and flawless "
+            f"implementation in accordance with government rules and regulations."
+        )
+
+        if second_group:
+            p_action = " ".join(second_group)
+            body_paras.append(
+                f"2. Field Inspection & Compliance: {p_action}. Departmental heads shall undertake direct field inspections "
+                f"and submit regular progress reports to the District Collectorate within the prescribed timeframe."
+            )
+    else:
+        body_paras.append(
+            f"All administrative officers are instructed to execute the assigned responsibilities with utmost diligence, "
+            f"transparency, and strict adherence to official timelines."
+        )
+
+    p_warning = (
+        "All officers must strictly adhere to the guidelines set forth in this circular. Any laxity, delay, "
+        "or non-compliance will invite disciplinary proceedings under the Tamil Nadu Civil Services (Discipline & Appeal) Rules "
+        "as ordered by District Collector Thiru S. Kandasamy, I.A.S."
+    )
+
+    return "\n\n".join([p1] + body_paras + [p_warning])
+
+
+def _format_memo_fallback_en(subject: str, details: str, date_str: str) -> str:
+    """Build an authentic Erode District Office Memorandum fallback in English."""
+    clean_subject = subject.strip()
+    raw_points = [p.strip() for p in details.split("\n") if p.strip()]
+    points, _ = _extract_footer_from_points(raw_points)
+
+    p_intro = (
+        f"The following administrative orders and standard operational guidelines regarding {clean_subject} "
+        f"in Erode District are hereby notified for the information and immediate compliance of all concerned."
+    )
+
+    body_sections = []
+    if points:
+        numbered_points = []
+        for idx, pt in enumerate(points, 1):
+            if pt and (pt[0].isdigit() or pt.startswith("-") or pt.startswith("*")):
+                numbered_points.append(pt)
+            else:
+                numbered_points.append(f"{idx}. {pt}")
+        body_sections.append("\n".join(numbered_points))
+    else:
+        body_sections.append(
+            "1. All concerned officers and section heads shall strictly comply with government rules.\n"
+            "2. Eligible beneficiaries and the general public are advised to follow the notified guidelines accordingly."
+        )
+
+    p_close = (
+        "All concerned departmental officers are instructed to take immediate necessary action "
+        "and ensure strict compliance as directed by District Collector Thiru S. Kandasamy, I.A.S."
+    )
+
+    return "\n\n".join([p_intro] + body_sections + [p_close])
+
+
+def _format_meeting_minutes_fallback_en(subject: str, details: str, date_str: str) -> str:
+    """Build an authentic Erode District Meeting Minutes fallback in English."""
+    clean_subject = subject.strip()
+    points = [p.strip() for p in details.split("\n") if p.strip()]
+
+    p_intro = (
+        f"The review meeting regarding {clean_subject} was held on {date_str} at 10:30 AM at the "
+        f"Collectorate Conference Hall, Erode, chaired by Thiru S. Kandasamy, I.A.S., District Collector. "
+        f"The District Revenue Officer, various departmental heads, association representatives, and stakeholders attended the meeting."
+    )
+
+    body_sections = []
+    if points:
+        first_group = points[:len(points)//2 + 1] if len(points) > 1 else points
+        second_group = points[len(points)//2 + 1:] if len(points) > 1 else []
+
+        body_sections.append("Representations and Points Discussed:")
+        for idx, pt in enumerate(first_group, 1):
+            body_sections.append(f"{idx}. {pt}")
+        body_sections.append("(Action: Revenue Department, Water Resources, Agriculture, DRDA)")
+
+        if second_group:
+            body_sections.append("\nDepartmental Status & Actions Taken:")
+            for pt in second_group:
+                body_sections.append(f"• Departmental Action: {pt}. Instructions were issued to expedite pending clearances.")
+    else:
+        body_sections.append(
+            "All representations received during the review were discussed in detail. Departmental officers were "
+            "directed to conduct field inspections and resolve all grievances expeditiously."
+        )
+
+    p_collector = (
+        "Directives of the District Collector:\n"
+        "The District Collector directed that all departmental officers must initiate immediate time-bound action on all "
+        "grievances and resolutions. Progress reports must be submitted before the next review meeting without fail."
+    )
+
+    return "\n\n".join([p_intro, "\n".join(body_sections), p_collector])
 
 
 # ---------------------------------------------------------------------------
-# Deterministic fallback content (no LLM needed)
+# Number Generator & Ollama Model Resolver
 # ---------------------------------------------------------------------------
-FALLBACK_BODIES = {
-    "press_release": "{details}",  # Dynamic generator used in generate()
-    "circular": (
-        "அனைத்து துறைத் தலைவர்கள் மற்றும் வட்டாட்சியர்களின் கவனத்திற்கு:\n\n"
-        "பொருள்: {subject}\n\n"
-        "{details}\n\n"
-        "மேற்கண்ட விவரங்களை கவனத்தில் கொண்டு உடனடியாக தேவையான நடவடிக்கை "
-        "எடுக்குமாறு அறிவுறுத்தப்படுகிறது.\n\n"
-        "இந்த சுற்றறிக்கை பெறப்பட்ட உடனேயே ஒப்புகை அனுப்பவும்."
-    ),
-    "memo": (
-        "குறிப்பாணை விவரம்:\n\n"
-        "பொருள்: {subject}\n\n"
-        "{details}\n\n"
-        "மேற்கண்ட விவரங்கள் உரிய அலுவலர்களின் கவனத்திற்கும் "
-        "தேவையான நடவடிக்கைக்கும் சமர்ப்பிக்கப்படுகிறது.\n\n"
-        "உரிய நடவடிக்கை எடுத்து அறிக்கை சமர்ப்பிக்குமாறு கேட்டுக்கொள்ளப்படுகிறது."
-    ),
-    "meeting_minutes": (
-        "கூட்டப் பொருள்: {subject}\n\n"
-        "கூட்ட நடவடிக்கைகள்:\n\n"
-        "{details}\n\n"
-        "முடிவுகள்:\n"
-        "1. மேற்கண்ட விவரங்கள் குறித்து உரிய நடவடிக்கை எடுக்க முடிவு செய்யப்பட்டது.\n"
-        "2. அடுத்த கூட்ட நாள் தனியாக தெரிவிக்கப்படும்.\n"
-        "3. சம்பந்தப்பட்ட அனைத்து அலுவலர்களும் நடவடிக்கை அறிக்கையை "
-        "15 நாட்களுக்குள் சமர்ப்பிக்க வேண்டும்."
-    ),
-}
-
-
 def _generate_ref_number(prefix: str) -> str:
     """Generate an authentic reference / press release sequence number."""
     now = datetime.now()
     if prefix == "PR":
-        # DIPR standard Press Release sequence number (e.g. 14, 39, 59)
         seq = (int(now.strftime("%H%M%S")) % 90) + 10
         return str(seq)
     seq = now.strftime("%H%M%S")
@@ -437,8 +685,11 @@ def _try_ollama(prompt: str) -> Optional[str]:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Generator Class
+# ---------------------------------------------------------------------------
 class OfficialContentGenerator:
-    """Generates official Tamil Nadu government documents."""
+    """Generates official Tamil Nadu government documents in Tamil and English."""
 
     def generate(
         self,
@@ -446,17 +697,19 @@ class OfficialContentGenerator:
         subject: str,
         details: str,
         officer_id: str = "OFC001",
+        language: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Generate an official document.
+        """Generate an official document with intelligent language matching.
 
         Args:
             template_type: One of 'press_release', 'circular', 'memo', 'meeting_minutes'
             subject: Document subject line
             details: Key points / context for the document
             officer_id: Officer ID creating the document
+            language: 'auto', 'ta' (Tamil), or 'en' (English)
 
         Returns:
-            Dict with content_id, generated_text, ref_number, template_type, metadata
+            Dict with content_id, generated_text, ref_number, template_type, language, metadata
         """
         if template_type not in TEMPLATE_REGISTRY:
             raise ValueError(
@@ -470,11 +723,21 @@ class OfficialContentGenerator:
         date_str = now.strftime("%d.%m.%Y")
         content_id = f"cnt_{uuid.uuid4().hex[:12]}"
 
+        # --- Detect Language ---
+        if language in ("ta", "en"):
+            detected_lang = language
+        else:
+            detected_lang = detect_language(f"{subject} {details}")
+
         # --- Extract and verify any footer provided in details ---
         raw_detail_lines = [p.strip() for p in (details or "").split("\n") if p.strip()]
         _, found_footer = _extract_footer_from_points(raw_detail_lines)
 
-        default_footer = "வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்."
+        default_footer = (
+            registry_entry.get("default_footer_en", "Issued by: District Public Relations Officer, Erode District.")
+            if detected_lang == "en"
+            else registry_entry.get("default_footer_ta", "வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்.")
+        )
         if found_footer:
             norm_found = re.sub(r'[\s\-_,.:;]', '', found_footer)
             norm_def = re.sub(r'[\s\-_,.:;]', '', default_footer)
@@ -489,50 +752,79 @@ class OfficialContentGenerator:
         content_body = None
         source = "fallback"
 
-        # Try LLM first
-        llm_prompt = LLM_PROMPTS.get(template_type, "")
+        # Select prompt set based on language
+        prompt_dict = LLM_PROMPTS_EN if detected_lang == "en" else LLM_PROMPTS_TA
+        llm_prompt = prompt_dict.get(template_type, "")
+
         if llm_prompt:
             formatted_prompt = llm_prompt.format(subject=subject, details=details, date=date_str)
             content_body = _try_ollama(formatted_prompt)
             if content_body:
                 source = "ollama"
 
-        # Fallback to deterministic template
+        # Fallback to deterministic template according to language
         if not content_body:
-            if template_type == "press_release":
-                content_body = _format_press_release_fallback(subject=subject, details=details, date_str=date_str)
-            elif template_type == "circular":
-                content_body = _format_circular_fallback(subject=subject, details=details, date_str=date_str)
-            elif template_type == "memo":
-                content_body = _format_memo_fallback(subject=subject, details=details, date_str=date_str)
-            elif template_type == "meeting_minutes":
-                content_body = _format_meeting_minutes_fallback(subject=subject, details=details, date_str=date_str)
+            if detected_lang == "en":
+                if template_type == "press_release":
+                    content_body = _format_press_release_fallback_en(subject=subject, details=details, date_str=date_str)
+                elif template_type == "circular":
+                    content_body = _format_circular_fallback_en(subject=subject, details=details, date_str=date_str)
+                elif template_type == "memo":
+                    content_body = _format_memo_fallback_en(subject=subject, details=details, date_str=date_str)
+                elif template_type == "meeting_minutes":
+                    content_body = _format_meeting_minutes_fallback_en(subject=subject, details=details, date_str=date_str)
+                else:
+                    content_body = f"{subject}\n\n{details}"
             else:
-                fallback = FALLBACK_BODIES.get(template_type, "{subject}\n\n{details}")
-                content_body = fallback.format(subject=subject, details=details or "[விவரம் வழங்கப்படவில்லை]")
+                if template_type == "press_release":
+                    content_body = _format_press_release_fallback_ta(subject=subject, details=details, date_str=date_str)
+                elif template_type == "circular":
+                    content_body = _format_circular_fallback_ta(subject=subject, details=details, date_str=date_str)
+                elif template_type == "memo":
+                    content_body = _format_memo_fallback_ta(subject=subject, details=details, date_str=date_str)
+                elif template_type == "meeting_minutes":
+                    content_body = _format_meeting_minutes_fallback_ta(subject=subject, details=details, date_str=date_str)
+                else:
+                    content_body = f"{subject}\n\n{details}"
 
         # Strip any redundant footer from content_body
         content_body_clean_lines = []
         for line in (content_body or "").splitlines():
             line_no_num = re.sub(r'^\d+[\.\)]\s*', '', line).strip()
-            if (line_no_num.startswith("வெளியீடு") or "செய்தி மக்கள் தொடர்பு அலுவலர்" in line_no_num or line_no_num.startswith("இப்படிக்கு")) and len(line_no_num) < 140:
+            is_footer_line = (
+                line_no_num.startswith("வெளியீடு") or
+                "செய்தி மக்கள் தொடர்பு அலுவலர்" in line_no_num or
+                line_no_num.startswith("இப்படிக்கு") or
+                line_no_num.lower().startswith("issued by") or
+                "public relations officer" in line_no_num.lower() or
+                line_no_num.lower().startswith("by order")
+            )
+            if is_footer_line and len(line_no_num) < 140:
                 continue
             content_body_clean_lines.append(line)
         content_body = "\n".join(content_body_clean_lines).strip()
 
         # --- Build participants/resolutions for meeting minutes ---
-        participants_section = "- தெரிவிக்கப்படும் (To be updated)"
-        resolutions_section = "- கூட்ட முடிவுகளின்படி நடவடிக்கை எடுக்கப்படும்."
+        if detected_lang == "en":
+            participants_section = "- To be updated"
+            resolutions_section = "- Action shall be initiated pursuant to meeting resolutions."
+        else:
+            participants_section = "- தெரிவிக்கப்படும் (To be updated)"
+            resolutions_section = "- கூட்ட முடிவுகளின்படி நடவடிக்கை எடுக்கப்படும்."
 
         if template_type == "meeting_minutes" and details:
-            # Extract any numbered items as resolutions
             lines = [l.strip() for l in details.split("\n") if l.strip()]
-            numbered = [l for l in lines if l and l[0].isdigit()]
+            numbered = [l for l in lines if l and (l[0].isdigit() or l.startswith("-") or l.startswith("•"))]
             if numbered:
                 resolutions_section = "\n".join(f"  {r}" for r in numbered)
 
-        # --- Render final document ---
-        template = _jinja_env.from_string(registry_entry["template"])
+        # --- Select Template (Tamil or English) ---
+        template_str = (
+            registry_entry.get("template_en") if detected_lang == "en"
+            else registry_entry.get("template_ta")
+        ) or registry_entry["template"]
+
+        template = _jinja_env.from_string(template_str)
         generated_text = template.render(
             ref_number=ref_number,
             date=date_str,
@@ -552,6 +844,7 @@ class OfficialContentGenerator:
             "ref_number": ref_number,
             "subject": subject,
             "details": details,
+            "language": detected_lang,
             "generated_text": generated_text,
             "content_body": content_body,
             "officer_id": officer_id,

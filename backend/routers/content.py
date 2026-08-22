@@ -66,13 +66,16 @@ async def generate_content(req: ContentGenerateRequest):
             detail=f"Invalid template_type. Must be one of: {valid_types}",
         )
 
+    language = req.fields.get("language")
     try:
         result = _generator.generate(
             template_type=req.template_type,
             subject=subject,
             details=details,
             officer_id=req.officer_id,
+            language=language,
         )
+
 
         # Persist to DB
         save_official_content(
