@@ -5,10 +5,12 @@ import useAppStore from '../../stores/appStore';
 import {
   fetchDatasets,
   fetchDatasetSchema,
+  fetchDatasetData,
   uploadDataset,
   queryDataset,
   deleteDatasetApi,
 } from '../../lib/api';
+
 import {
   BarChart3,
   Upload,
@@ -233,7 +235,17 @@ export default function DataModule() {
 
     try {
       // Step 1: Read dataset schema & analyze columns
-      const schemaData = await fetchDatasetSchema(dsId);
+      let schemaData = await fetchDatasetSchema(dsId);
+      if (!schemaData.sample_rows || schemaData.sample_rows.length === 0) {
+        try {
+          const rowsRes = await fetchDatasetData(dsId, 100);
+          if (rowsRes && rowsRes.rows && rowsRes.rows.length > 0) {
+            schemaData = { ...schemaData, sample_rows: rowsRes.rows, total_rows: rowsRes.total_rows || rowsRes.rows.length };
+          }
+        } catch (e) {
+          console.warn('Could not fetch dataset rows:', e);
+        }
+      }
       setDatasetSchema(schemaData);
 
       // Step 2: Generating Visualizations
@@ -260,6 +272,7 @@ export default function DataModule() {
       setAnalyzingStep(null);
     }
   };
+
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -503,28 +516,23 @@ export default function DataModule() {
   // Helper to parse sample data into clean Recharts format
   const getParsedChartData = () => {
     if (!datasetSchema || !datasetSchema.sample_rows || datasetSchema.sample_rows.length === 0) {
-      return [
-        { name: 'ஈரோடு (Erode)', value: 450 },
-        { name: 'பவானி (Bhavani)', value: 380 },
-        { name: 'கோபி (Gobi)', value: 310 },
-        { name: 'சத்தியமங்கலம் (Sathy)', value: 290 },
-        { name: 'பெருந்துறை (Perundurai)', value: 240 },
-        { name: 'அந்தியூர் (Anthiyur)', value: 190 },
-        { name: 'கொடுமுடி (Kodumudi)', value: 150 },
-      ];
+      return [];
     }
 
     const sample = datasetSchema.sample_rows;
     const cols = datasetSchema.columns || [];
 
-    const xKey = cols.find((c) => c.is_taluk_column || c.is_department_column || c.data_type_detected === 'text')?.column_name || Object.keys(sample[0])[0];
-    const yKey = cols.find((c) => c.data_type_detected === 'number' || c.is_amount_column)?.column_name || Object.keys(sample[0])[1];
+    const xKey = cols.find((c) => c.is_taluk_column || c.is_department_column || c.data_type_detected === 'text')?.column_name || Object.keys(sample[0] || {})[0];
+    const yKey = cols.find((c) => c.data_type_detected === 'number' || c.is_amount_column)?.column_name || Object.keys(sample[0] || {})[1];
 
-    return sample.slice(0, 10).map((row, idx) => ({
+    if (!xKey || !yKey) return [];
+
+    return sample.slice(0, 15).map((row, idx) => ({
       name: String(row[xKey] ?? `Row ${idx + 1}`),
-      value: typeof row[yKey] === 'number' ? row[yKey] : parseFloat(row[yKey]) || (idx + 1) * 45,
+      value: typeof row[yKey] === 'number' ? row[yKey] : (parseFloat(String(row[yKey]).replace(/[^0-9.-]/g, '')) || 0),
     }));
   };
+
 
   const chartData = getParsedChartData();
   const selectedDataset = datasets.find((d) => d.dataset_id === selectedDatasetId);
@@ -858,19 +866,13 @@ export default function DataModule() {
   // Extract ONLY the 2 visualization data columns (X-Axis and Y-Axis) for table rendering
   const tableRows = datasetSchema?.sample_rows && datasetSchema.sample_rows.length > 0
     ? datasetSchema.sample_rows.map((row) => ({
-      [activeXCol]: row[activeXCol] !== undefined && row[activeXCol] !== null ? String(row[activeXCol]) : (row.name || '-'),
-      [activeYCol]: row[activeYCol] !== undefined && row[activeYCol] !== null ? row[activeYCol] : (row.value || '-'),
+      [activeXCol]: row[activeXCol] !== undefined && row[activeXCol] !== null ? String(row[activeXCol]) : (row[Object.keys(row)[0]] || '-'),
+      [activeYCol]: row[activeYCol] !== undefined && row[activeYCol] !== null ? (typeof row[activeYCol] === 'number' ? row[activeYCol].toLocaleString('ta-IN') : String(row[activeYCol])) : (row[Object.keys(row)[1]] || '-'),
     }))
-    : [
-      { [activeXCol]: 'Retail', [activeYCol]: 450 },
-      { [activeXCol]: 'Education', [activeYCol]: 390 },
-      { [activeXCol]: 'Health Services', [activeYCol]: 310 },
-      { [activeXCol]: 'Public Works', [activeYCol]: 290 },
-      { [activeXCol]: 'Agriculture', [activeYCol]: 240 },
-      { [activeXCol]: 'Revenue', [activeYCol]: 190 },
-    ];
+    : [];
 
   const tableColumns = [activeXCol, activeYCol];
+
 
 
   return (
@@ -1324,15 +1326,31 @@ export default function DataModule() {
                       </tr>
                     </thead>
                     <tbody>
-                      {tableRows.map((row, rowIdx) => (
-                        <tr
-                          key={rowIdx}
-                          style={{
-                            borderBottom: '1px solid var(--color-surface-border)',
-                            background: rowIdx % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)',
-                            transition: 'background-color 0.15s ease',
-                          }}
-                        >
+                      {tableRows.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={tableColumns.length || 2}
+                            style={{
+                              padding: '24px',
+                              textAlign: 'center',
+                              color: 'var(--color-text-muted)',
+                              fontSize: '0.9rem',
+                            }}
+                          >
+                            தரவுகள் எதுவும் கிடைக்கவில்லை / No data rows available
+                          </td>
+                        </tr>
+                      ) : (
+                        tableRows.map((row, rowIdx) => (
+                          <tr
+                            key={rowIdx}
+                            style={{
+                              borderBottom: '1px solid var(--color-surface-border)',
+                              background: rowIdx % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)',
+                              transition: 'background-color 0.15s ease',
+                            }}
+                          >
+
                           {tableColumns.map((col) => {
                             const val = row[col];
                             const displayVal = val === null || val === undefined ? '-' : String(val);
@@ -1355,8 +1373,9 @@ export default function DataModule() {
                             );
                           })}
                         </tr>
-                      ))}
+                      )))}
                     </tbody>
+
                   </table>
                 </div>
               </div>

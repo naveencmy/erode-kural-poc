@@ -230,10 +230,56 @@ async def export_content_pdf(content_id: str, req: Optional[CustomExportRequest]
         raise HTTPException(status_code=500, detail=f"PDF export failed: {str(e)}")
 
 
+@router.post("/api/content/attach-file")
+async def attach_content_reference_file(
+    file: UploadFile = File(...),
+    officer_id: str = "OFFICER",
+):
+    """Attach any format reference file (PDF, Word, Excel, CSV, Image, TXT, etc.) for official content generation."""
+    try:
+        content_bytes = await file.read()
+        if not content_bytes:
+            raise HTTPException(status_code=400, detail="Empty file uploaded")
+
+        import hashlib
+        import config
+        from modules.document_summary.extractor import ContentExtractor
+        
+        hasher = hashlib.sha256(content_bytes)
+        source_id = f"ref_{hasher.hexdigest()[:12]}"
+        clean_name = Path(file.filename or "reference_document").name
+        dest_path = config.UPLOADS_DOCUMENTS_DIR / f"{source_id}_{clean_name}"
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(dest_path, "wb") as f:
+            f.write(content_bytes)
+
+        extractor = ContentExtractor()
+        extracted = extractor.extract(dest_path)
+        raw_text = extracted.get("text", "").strip()
+
+        lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
+        suggested_subject = lines[0][:100] if lines else clean_name.rsplit(".", 1)[0]
+        suggested_details = "\n".join(lines[:12]) if len(lines) > 1 else raw_text[:800]
+
+        return {
+            "status": "success",
+            "file_name": file.filename,
+            "file_size": len(content_bytes),
+            "file_type": extracted.get("file_type", "unknown"),
+            "suggested_subject": suggested_subject,
+            "extracted_text": raw_text[:3000],
+            "suggested_details": suggested_details,
+        }
+    except Exception as e:
+        logger.error(f"Reference file extraction failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"File extraction failed: {str(e)}")
+
+
 def _get_title(template_type: str, lang: str) -> str:
     from modules.official_content.templates import TEMPLATE_REGISTRY
     entry = TEMPLATE_REGISTRY.get(template_type, {})
     return entry.get(f"title_{lang}", template_type)
+
 
 
 # ---------------------------------------------------------------------------

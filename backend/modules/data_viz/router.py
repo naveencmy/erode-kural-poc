@@ -117,11 +117,33 @@ async def get_datasets_list(
 
 @router.get("/datasets/{dataset_id}/schema")
 async def get_dataset_schema(dataset_id: str):
-    """Retrieve full schema with profiling stats for a dataset."""
+    """Retrieve full schema with profiling stats and sample rows for a dataset."""
     ds = get_dataset(dataset_id)
     if not ds:
         raise HTTPException(status_code=404, detail=TAMIL_ERROR_MESSAGES["DATASET_NOT_FOUND"])
+
+    # Load actual sample rows directly from dataset file
+    try:
+        df = load_dataset_dataframe(ds["file_path"], sheet_name=ds.get("sheet_name", "Sheet1"))
+        records = df.head(100).to_dict(orient="records")
+        cleaned = []
+        for r in records:
+            cleaned_row = {}
+            for k, v in r.items():
+                if isinstance(v, float) and (v != v or v == float("inf") or v == float("-inf")):
+                    cleaned_row[k] = None
+                else:
+                    cleaned_row[k] = v
+            cleaned.append(cleaned_row)
+        ds["sample_rows"] = cleaned
+        ds["total_rows"] = len(df)
+    except Exception as e:
+        logger.warning(f"Could not load sample rows for schema: {e}")
+        ds["sample_rows"] = []
+        ds["total_rows"] = ds.get("row_count", 0)
+
     return ds
+
 
 
 @router.get("/datasets/{dataset_id}/data")

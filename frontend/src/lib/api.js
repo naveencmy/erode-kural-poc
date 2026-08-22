@@ -224,6 +224,16 @@ export const generateContent = (templateType, fields, officerId) =>
     body: JSON.stringify({ template_type: templateType, fields, officer_id: officerId }),
   });
 
+export const attachContentFile = async (file, officerId = 'OFFICER') => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiCall(`/content/attach-file?officer_id=${encodeURIComponent(officerId)}`, {
+    method: 'POST',
+    body: formData,
+  });
+};
+
+
 export const fetchContentHistory = (officerId = null, limit = 20) => {
   const params = new URLSearchParams();
   if (officerId) params.set('officer_id', officerId);

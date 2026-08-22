@@ -842,14 +842,15 @@ export default function GeneralModule() {
           flexShrink: 0,
         }}
       >
-        {/* Hidden File Input */}
+        {/* Hidden File Input — Supports Any Format */}
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,.docx,.txt"
+          accept="*/*"
           style={{ display: 'none' }}
           onChange={handleFileChange}
         />
+
 
         {/* Attached File Section: 1. Suggestions (Vertical), 2. Document Chip */}
         {file && (
@@ -1031,7 +1032,8 @@ export default function GeneralModule() {
                 alignItems: 'center',
                 gap: 6,
               }}
-              title="Upload Document (.pdf, .docx, .txt)"
+              title="Attach Any File Format (PDF, Word, Excel, CSV, Image, Text, etc.)"
+
             >
               <Paperclip size={16} />
               <span>{t('general.attachment')}</span>

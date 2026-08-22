@@ -1,0 +1,118 @@
+Delivered-To: pockural@gmail.com
+Received: by 2002:a05:6200:8481:10b0:65f:88e3:661d with SMTP id rc1-n1csp1240899qnc;
+        Wed, 19 Aug 2026 23:19:55 -0700 (PDT)
+X-Received: by 2002:a05:690e:4891:10b0:668:8dc0:bcc3 with SMTP id 956f58d0204a3-66ccb3a5042mr2633292d50.0.1787206795450;
+        Wed, 19 Aug 2026 23:19:55 -0700 (PDT)
+ARC-Seal: i=2; a=rsa-sha256; t=1787206795; cv=pass;
+        d=google.com; s=arc-20260327;
+        b=O/yeFAcv0w1epIpjXz3KV4FPwANUj+KJY3Z+Xs0KO2HEkdzJKxzzGwwCnTI+hlo40h
+         Qssj/8HqTHAtAhGFyJX9gq6/P0rHTcx1Nv9rFR8PT6Ux8bhBe+03udNpwOmdWVy7SW4L
+         qTP18vBJLqsHUjd4N2B69p6UWbNHYSy5xZjsp3IreFlNFCKlDqYhJ+5/25p1lnfsCkCq
+         AzVDKBCHN/XNHuVhxRRE/cIgtmD6pd1LlZX0qfz8DPxGGT6WfLSicKYAvk3a/7JGWGm6
+         hUrNI3H+BgvyL7O6soqVski+fb+lRKM/sAOVMVB35QLA1mk66Sj7fquQDF717dIYXbCT
+         M6Qw==
+ARC-Message-Signature: i=2; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20260327;
+        h=to:subject:message-id:date:from:mime-version:dkim-signature;
+        bh=IYVFKD9DhO6grutNRf+Pxw9nJNyEZDZiki4NGqOJ8dc=;
+        fh=m9B5WlenfRb/lX7A7Sjyz+UITFt4fTdIhsBvrIaYJmw=;
+        b=XEdtKw+ECa7YYlXxOrLPGExL56RFUhdFtwtMtarK/sJeqCqux+Uw//UGxoGMfTfSmW
+         rr603uThQFOoTIvWTq/VCDRKw7qeyQGAxaHvubHFofocREX+Bd/HjrNPdFS7vnQrl+Uf
+         7+EP0iRZYpXcWxAKtJzAppvcqVL9XPDgKZ9pY+vzW1OfTU6XzQ2lC75hstzJnmk7Fa3y
+         obmai4oaPu1ngWHtdOkJB3z1Kqvd4d4cS7HEhN1b1FHvRyieenDMydcSzAo09TrvVLZS
+         WytMf8rA5FSJNy53rpG7R9IrRKb4/7MMdWrMWwM21T0AGkYFlgPTZW1qVhILDlCvVNAU
+         OrUg==;
+        dara=google.com
+ARC-Authentication-Results: i=2; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20251104 header.b=aNq9jaFe;
+       arc=pass (i=1);
+       spf=pass (google.com: domain of balahariharan003@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=balahariharan003@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <balahariharan003@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id 956f58d0204a3-66ccaea20a9sor1976193d50.0.2026.08.19.23.19.55
+        for <pockural@gmail.com>
+        (Google Transport Security);
+        Wed, 19 Aug 2026 23:19:55 -0700 (PDT)
+Received-SPF: pass (google.com: domain of balahariharan003@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20251104 header.b=aNq9jaFe;
+       arc=pass (i=1);
+       spf=pass (google.com: domain of balahariharan003@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=balahariharan003@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+ARC-Seal: i=1; a=rsa-sha256; t=1787206795; cv=none;
+        d=google.com; s=arc-20260327;
+        b=UQDN6YPyWruXAngk4Svgvvml0YBEDup1rv61MYDQs6knPHgsHnTSl500PQso0RMOd3
+         EqOSPmq7Uoy5Auferkx3vdFglNSKrFPphMWzs0gjig3atCYx1oY0OxqWtcnJ3mRCKOLa
+         qx66ct+pRzmvvw+xg9KtVYOq6WlAL72R7k7I+OJ0UWetJsGccx+eJeakO6gW6JaPswn8
+         L1bczpa64B1S7lBVNRdL+FOTddIVaFH21JmWD2Qler2pVFA3C//r+hOw8tAtdG6bZ+sN
+         +35lVMMQx2Gf7/m2lqZdIOy5187snm9f2b+qkaA03cr+FPxvnRfpvriet+ZmTwFIVUM3
+         RK5w==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20260327;
+        h=to:subject:message-id:date:from:mime-version:dkim-signature;
+        bh=IYVFKD9DhO6grutNRf+Pxw9nJNyEZDZiki4NGqOJ8dc=;
+        fh=m9B5WlenfRb/lX7A7Sjyz+UITFt4fTdIhsBvrIaYJmw=;
+        b=RayP+kbPoHXfRXaxuRIDUiiG1QfOm0mYjPHxFvvy+Z8bx/46GOpfXzmZrCb+AGDlKv
+         +f63XKuEAe2FIDsb/Yq6fp/d/pdurw9DlB35lo7JldgtzQsn+aHtBVZOJJpNk92/LV/C
+         9nQu0k7Ja8wA1nU4DdMdct6kFgCIcHXRvF3yrlkVop4wxOjlSPWIsU4O8XzlhlCPDVxj
+         LqG1vuaLgqtLNR7ZWgdK90u1+3X9MUTwdwEgjtPGzHIKHIwq386ofjSpmbDAcm6awYD+
+         hf1UuCbSS2V2+OrZGk1hGJsp4DGoINPcUpi9WBCxJcm9lR3/3jfmQP0FTprLaDDcv22u
+         hPJQ==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com; arc=none
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20251104; t=1787206795; x=1787811595; dara=google.com;
+        h=content-type:to:subject:message-id:date:from:mime-version:from:to
+         :cc:subject:date:message-id:reply-to:content-type;
+        bh=IYVFKD9DhO6grutNRf+Pxw9nJNyEZDZiki4NGqOJ8dc=;
+        b=aNq9jaFewRYSHdXvxGz71gOi0/gPKHrM8am8oWYHZkn62kdXWlH/p/G53rZ8ZUP6Kb
+         MFxpPkMHiEeRtHEw6oc+2e0FQGs1gWb3jVrBgK08YozkkzT8FJNSNgUZ+h7hQAOmm4Wl
+         8sdndlpI/Hi5/YewlBOZyhaq/+p84CY+HYoiBtRrIepghArT6UNHPkLT/DRrrUrYekju
+         ebWJDymq5nuZviPRVcoyKclEOY4fhgNhjCBQ+hWShHM5kBN7AUglTevjnQH3swKLTNyY
+         Hwoq0BHmDsIeEmJhnfRlhBJzdeQULOxETpNgWaxzWbKyUCI7WBtXeHHCB3OsyXS9CrMk
+         6GXQ==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20251104; t=1787206795; x=1787811595;
+        h=content-type:to:subject:message-id:date:from:mime-version:x-gm-gg
+         :x-gm-message-state:from:to:cc:subject:date:message-id:reply-to
+         :content-type;
+        bh=IYVFKD9DhO6grutNRf+Pxw9nJNyEZDZiki4NGqOJ8dc=;
+        b=hGet0d0RvcoiDmwP/XzUv9gVymDwLGmXRITgCPYDrGA/fJoYVHctj6cSYujz/rK1KV
+         m8IXwXi4pweTPGegFyrN1SvPRm5F1vgtV3IY5wLqR5Xp2a0tVwLlAaMkkadSZmARs2k0
+         7wuB0AsHVRmtp2sSA9TV+CJb+K2jiuNcRZMz6LZgsn7jMCxYQ5HlCtEbQbdXf7BJpvlW
+         9ou96AfJun1M3sjVBhoBbp03MK14T0fOdLMaFVuRzGZSvSaJt9f0jYU2tjBKtqdXqO3b
+         cz4lgL1dEhgG4wVzKhDYLk2RERHfd/4ojUSjiAfGhdwZaXoO+Uax0qaA31ISzTkRZ3+F
+         UqJw==
+X-Gm-Message-State: AFuF++lCrC+sLrWmuDqGzkPoWgEiZCqWJ0M3GXEl+WBTgzKph4GG5MFL
+	oSitkZuKX671AM6lCVaPLFBoOFXnWp9Q31BmPqF7Vk67Ni+U81FBSKeHdexyCg+3NsMZ0eBKNtQ
+	fJOL2+UOVltX7cJvNe+HzOgmPTuUK3W2CRpWu
+X-Gm-Gg: AR+sD13HbTbCXugOwaagAkwCouF6K2A6YOOZ46oeW+HFegPyjdrmsSJJZiNfGS2PrvU
+	wev5xfYyzw4779DOgjMhC+UTZlIUWI2XV8NaDuPqt6YujOLfRWFKFAreJsvT1ZTtN6jmSVKPNv7
+	ETzdrZLlUvV61dXRGw2PRgRPy2X9vhHrlvXka87f6XqK9Y39T7Ek+9w40gSr2pMMg1xA+Rv9oKG
+	eAZOuRf31oloMqzTADSCFFZOPsu6rd6/Z8u/Ebh/PKExUtBluvX7lcATAySxiB72Mm00QNMvHgd
+	dAUo7ArS644LjuInezB49DASozkiwhirxtq/ltF/U4iyBbWx2ipl63x7LU6C/VM2CpB1hrEzDco
+	zRlc=
+X-Received: by 2002:a05:690e:4399:b0:668:9402:4f91 with SMTP id
+ 956f58d0204a3-66ccb55e302mr1836294d50.6.1787206795023; Wed, 19 Aug 2026
+ 23:19:55 -0700 (PDT)
+MIME-Version: 1.0
+From: Balahariharan <balahariharan003@gmail.com>
+Date: Thu, 20 Aug 2026 11:49:42 +0530
+X-Gm-Features: AcwNN1WgmvJGCw69GlYDHfQ0o6fyrpm_jekjrLuvY2rwkaN33JY8ubbHnRob_lc
+Message-ID: <CABTYo6zo8yvhUFBJ_SByPuJ1vr-0ZHa=mFHbJ53-4wMb_FFwzA@mail.gmail.com>
+Subject: 
+To: "pockural@gmail.com" <pockural@gmail.com>
+Content-Type: multipart/alternative; boundary="0000000000002859d3065974824c"
+
+--0000000000002859d3065974824c
+Content-Type: text/plain; charset="UTF-8"
+
+vanakkam nanbargale.
+
+--0000000000002859d3065974824c
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr">vanakkam nanbargale.</div>
+
+--0000000000002859d3065974824c--

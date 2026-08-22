@@ -1,12 +1,13 @@
 import React, { useState, useRef } from 'react';
 import useAppStore from '../../stores/appStore';
-import { generateContent, exportContentDocx } from '../../lib/api';
+import { generateContent, exportContentDocx, attachContentFile } from '../../lib/api';
 import html2pdf from 'html2pdf.js';
 import {
   Stamp, Sparkles, FileCheck, Download, FileText, ChevronRight,
   Newspaper, Bell, FileText as FileTextIcon, ClipboardList, RefreshCw,
-  Copy, CheckCheck, Pencil, Save, X, ChevronDown, ChevronUp, SlidersHorizontal, Plus,
+  Copy, CheckCheck, Pencil, Save, X, ChevronDown, ChevronUp, SlidersHorizontal, Plus, Paperclip,
 } from 'lucide-react';
+
 
 // ─── Template definitions ─────────────────────────────────────────────────────
 const TEMPLATES = [
@@ -89,9 +90,36 @@ export default function ContentModule() {
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState('');
 
+  const [attachedFile, setAttachedFile] = useState(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef(null);
+
   const resultRef = useRef(null);
   const [isFormOpen, setIsFormOpen] = useState(true);
   const formRef = useRef(null);
+
+  async function handleFileSelect(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFile(true);
+    setError(null);
+    try {
+      const res = await attachContentFile(file, officerId);
+      setAttachedFile(res);
+      if (!subject.trim() && res.suggested_subject) {
+        setSubject(res.suggested_subject);
+      }
+      if (res.suggested_details) {
+        setDetails(prev => prev.trim() ? `${prev}\n\n${res.suggested_details}` : res.suggested_details);
+      }
+    } catch (err) {
+      console.error('File attachment failed:', err);
+      setError('கோப்பு தகவல்கள் பெறுவதில் பிழை ஏற்பட்டது: ' + (err.message || ''));
+    } finally {
+      setUploadingFile(false);
+      if (e.target) e.target.value = '';
+    }
+  }
 
   async function handleGenerate(e) {
     e.preventDefault();
@@ -110,6 +138,7 @@ export default function ContentModule() {
       setLoading(false);
     }
   }
+
 
 
   async function handleExport() {
@@ -477,7 +506,7 @@ export default function ContentModule() {
 
         {isFormOpen && (
           <form onSubmit={handleGenerate} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {/* Language Selector */}
+            {/* Language Selector & File Attachment Bar */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, paddingBottom: 4 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
@@ -508,7 +537,75 @@ export default function ContentModule() {
                   </button>
                 ))}
               </div>
+
+              {/* Attach Any File Button */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="*/*"
+                  style={{ display: 'none' }}
+                  onChange={handleFileSelect}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingFile}
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: 8,
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    border: '1px dashed var(--color-tn-accent)',
+                    background: 'rgba(200,169,81,0.08)',
+                    color: 'var(--color-text-primary)',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                  title="Attach any document, spreadsheet, scan, or data file"
+                >
+                  <Paperclip size={14} style={{ color: 'var(--color-tn-accent)' }} />
+                  <span>{uploadingFile ? 'பகுப்பாய்வு செய்கிறது...' : '📎 ஆவணம் / கோப்பு இணைக்கவும் (Attach File)'}</span>
+                </button>
+              </div>
             </div>
+
+            {/* Attached File Chip if present */}
+            {attachedFile && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '6px 12px',
+                  borderRadius: 8,
+                  background: 'var(--color-surface-bg)',
+                  border: '1px solid var(--color-surface-border)',
+                  fontSize: '0.85rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+                  <FileText size={15} style={{ color: 'var(--color-tn-accent)', flexShrink: 0 }} />
+                  <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {attachedFile.file_name}
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', flexShrink: 0 }}>
+                    ({attachedFile.file_type.toUpperCase()} · {(attachedFile.file_size / 1024).toFixed(1)} KB)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAttachedFile(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 2 }}
+                  title="Remove attached file"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
 
             <div>
               <label className="tamil-text" style={{ fontSize: '0.95rem', fontWeight: 600, display: 'block', marginBottom: 4, color: 'var(--color-text-primary)' }}>

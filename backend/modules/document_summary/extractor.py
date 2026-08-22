@@ -33,7 +33,7 @@ except ImportError:
 
 
 def detect_file_type(file_path: Union[str, Path]) -> str:
-    """Detect file type via robust extension and MIME mapping."""
+    """Detect file type via robust extension and MIME mapping supporting any format."""
     path = Path(file_path)
     ext = path.suffix.lower().lstrip(".")
 
@@ -42,6 +42,8 @@ def detect_file_type(file_path: Union[str, Path]) -> str:
         "xlsx": "xlsx",
         "xls": "xlsx",
         "xlsm": "xlsx",
+        "xlsb": "xlsx",
+        "ods": "xlsx",
         "csv": "csv",
         "tsv": "csv",
         "png": "png",
@@ -49,10 +51,29 @@ def detect_file_type(file_path: Union[str, Path]) -> str:
         "jpeg": "jpg",
         "tiff": "png",
         "tif": "png",
+        "webp": "png",
+        "bmp": "png",
+        "gif": "png",
+        "svg": "txt",
         "docx": "docx",
         "doc": "docx",
+        "rtf": "txt",
+        "odt": "docx",
         "txt": "txt",
+        "md": "txt",
+        "markdown": "txt",
+        "json": "txt",
+        "xml": "txt",
+        "html": "txt",
+        "htm": "txt",
+        "log": "txt",
+        "yaml": "txt",
+        "yml": "txt",
+        "sql": "txt",
         "eml": "eml",
+        "msg": "txt",
+        "pptx": "pptx",
+        "ppt": "pptx",
     }
 
     if ext in EXT_MAP:
@@ -64,14 +85,27 @@ def detect_file_type(file_path: Union[str, Path]) -> str:
             "application/pdf": "pdf",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
             "application/vnd.ms-excel": "xlsx",
+            "application/vnd.oasis.opendocument.spreadsheet": "xlsx",
             "text/csv": "csv",
             "text/tab-separated-values": "csv",
             "image/png": "png",
             "image/jpeg": "jpg",
             "image/tiff": "png",
+            "image/webp": "png",
+            "image/bmp": "png",
+            "image/gif": "png",
+            "image/svg+xml": "txt",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
             "application/msword": "docx",
+            "application/vnd.oasis.opendocument.text": "docx",
+            "application/rtf": "txt",
             "text/plain": "txt",
+            "text/markdown": "txt",
+            "application/json": "txt",
+            "application/xml": "txt",
+            "text/xml": "txt",
+            "text/html": "txt",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
         }
         if guessed_type in MIME_MAP:
             return MIME_MAP[guessed_type]
@@ -101,6 +135,8 @@ class ContentExtractor:
             "jpg": self._extract_image,
             "docx": self._extract_docx,
             "txt": self._extract_text,
+            "pptx": self._extract_pptx,
+            "eml": self._extract_text,
         }
 
         handler = extractors.get(ftype, self._extract_unknown)
@@ -109,6 +145,34 @@ class ContentExtractor:
         result["file_name"] = path.name
         result["file_size_bytes"] = path.stat().st_size
         return result
+
+    def _extract_pptx(self, file_path: Path) -> Dict[str, Any]:
+        """Extract text from PowerPoint presentations or fallback."""
+        try:
+            import zipfile
+            import xml.etree.ElementTree as ET
+            slides_text = []
+            with zipfile.ZipFile(file_path, "r") as z:
+                for filename in z.namelist():
+                    if filename.startswith("ppt/slides/slide") and filename.endswith(".xml"):
+                        tree = ET.fromstring(z.read(filename))
+                        texts = [node.text for node in tree.iter() if node.text]
+                        if texts:
+                            slides_text.append(" ".join(texts))
+            full_text = "\n\n".join(slides_text)
+            if full_text:
+                return {
+                    "text": full_text,
+                    "tables": [],
+                    "blocks": [],
+                    "page_count": max(1, len(slides_text)),
+                    "has_images": False,
+                    "amount_columns": [],
+                }
+        except Exception:
+            pass
+        return self._extract_unknown(file_path)
+
 
     def _extract_pdf(self, file_path: Path) -> Dict[str, Any]:
         """PDF structure extraction with page text, Indic OCR, and table detection."""
