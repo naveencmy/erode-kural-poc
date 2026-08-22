@@ -161,17 +161,23 @@ def generate_deterministic_insights(
 
 
 def get_active_ollama_model() -> Optional[str]:
-    """Detect installed active model from local Ollama."""
+    """Detect installed active model from local Ollama prioritizing Qwen 2.5 7B."""
     try:
         resp = requests.get(f"{config.OLLAMA_API_BASE}/api/tags", timeout=1.5)
         if resp.status_code == 200:
             tags = resp.json().get("models", [])
             installed_names = [m.get("name") for m in tags if m.get("name")]
             preferred = [
-                "llama3.2:1b",
-                "phi4-mini:latest",
-                "mistral:7b-instruct-q4_K_M",
+                "qwen2.5:7b-instruct-q4_K_M",
+                "qwen2.5:7b",
+                "qwen2.5:latest",
                 config.OLLAMA_MODEL,
+                "qwen2.5",
+                "qwen2.5:3b",
+                "qwen2.5:1.5b",
+                "mistral:7b-instruct-q4_K_M",
+                "phi4-mini:latest",
+                "llama3.2:1b",
             ]
             for pref in preferred:
                 if pref in installed_names:

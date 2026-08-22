@@ -366,7 +366,7 @@ export default function ContentModule() {
       </div>
 
       {/* ── Template Selector ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8 }}>
         {TEMPLATES.map((tmpl) => {
           const Icon = tmpl.icon;
           const isActive = selectedTemplate === tmpl.id;

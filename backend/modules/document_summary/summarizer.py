@@ -323,10 +323,29 @@ JSON வெளியீட்டு கட்டமைப்பு:
         prompt_tmpl = prompts.get(summary_type, self.EXECUTIVE_PROMPT)
         prompt = prompt_tmpl.format(context=context_str)
 
+        active_model = self.model
+        try:
+            r_tags = requests.get(f"{self.ollama_url}/api/tags", timeout=1.5)
+            if r_tags.status_code == 200:
+                inst = [m.get("name") for m in r_tags.json().get("models", []) if m.get("name")]
+                pref = ["qwen2.5:7b-instruct-q4_K_M", "qwen2.5:7b", "qwen2.5:latest", config.OLLAMA_MODEL, "qwen2.5", "mistral:7b-instruct-q4_K_M", "phi4-mini:latest", "llama3.2:1b"]
+                for p in pref:
+                    if p in inst:
+                        active_model = p
+                        break
+                    for name in inst:
+                        if p.split(":")[0] in name:
+                            active_model = name
+                            break
+                    if active_model != self.model:
+                        break
+        except Exception:
+            pass
+
         try:
             url = f"{self.ollama_url}/api/generate"
             payload = {
-                "model": self.model,
+                "model": active_model,
                 "prompt": prompt,
                 "stream": False,
                 "format": "json",

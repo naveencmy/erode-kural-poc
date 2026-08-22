@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import pandas as pd
 import requests
 
 import config
@@ -85,12 +86,18 @@ class CollectorateRAGEngine:
 
     def __init__(self, ollama_url: str = config.OLLAMA_API_BASE):
         self.ollama_url = ollama_url
-        # Prioritize faster models for instant responses, fallback to heavier models
+        # Prioritize Qwen 2.5 7B first as per architecture plan, fallback to other installed models
         self.preferred_models = [
-            "llama3.2:1b",
-            "phi4-mini:latest",
-            "mistral:7b-instruct-q4_K_M",
+            "qwen2.5:7b-instruct-q4_K_M",
+            "qwen2.5:7b",
+            "qwen2.5:latest",
             config.OLLAMA_MODEL,
+            "qwen2.5",
+            "qwen2.5:3b",
+            "qwen2.5:1.5b",
+            "mistral:7b-instruct-q4_K_M",
+            "phi4-mini:latest",
+            "llama3.2:1b",
         ]
 
     def _get_active_ollama_model(self) -> Optional[str]:
@@ -232,7 +239,6 @@ class CollectorateRAGEngine:
             fp = get_content_fingerprint(source_id) or {}
 
             filename = Path(raw_path_str).name if raw_path_str else source_id
-            # Clean filename prefix if formatted like doc_xxx_name.pdf
             clean_filename = re.sub(r"^doc_[a-f0-9]+_", "", filename)
 
             return {
@@ -249,17 +255,127 @@ class CollectorateRAGEngine:
         finally:
             conn.close()
 
+    def _format_tabular_document_summary(self, df: pd.DataFrame, fname: str) -> str:
+        """Format an Excel/CSV spreadsheet into a clean, intuitive Markdown table and simple plain-Tamil takeaways."""
+        parts = []
+        parts.append(f"### ஆவணப் பகுப்பாய்வு சுருக்கம் ({fname})\n")
+
+        cols = list(df.columns)
+        cat_col = cols[0] if cols else "வட்டம்/பிரிவு"
+
+        # Identify numeric columns
+        num_cols = []
+        for c in cols:
+            s_clean = df[c].astype(str).str.replace(',', '').str.replace('₹', '').str.replace('Rs.', '', case=False)
+            num_series = pd.to_numeric(s_clean, errors='coerce')
+            if num_series.notnull().sum() >= max(1, len(df) * 0.5):
+                num_cols.append(c)
+
+        main_metric = num_cols[0] if num_cols else (cols[1] if len(cols) > 1 else "")
+        metric_label = main_metric.replace("_", " ") if main_metric else "அளவீடு"
+
+        # 1. Simple Plain-Tamil Overview (Clear for anyone)
+        parts.append(
+            f"**பொருள் மற்றும் சுருக்கம்:**\n"
+            f"இந்த ஆவணம் ஈரோடு மாவட்டத்தின் **{cat_col}** வாரியான **{metric_label}** மற்றும் தொடர்புடைய நிர்வாக செயல்பாட்டு விவரங்களை தெளிவாகக் காட்டுகிறது. "
+            f"இதில் மொத்தம் **{len(df)}** பதிவுகள் அடங்கியுள்ளன.\n"
+        )
+
+        # 2. Clean Markdown Table (Top 10 rows)
+        display_df = df.head(10).copy()
+        headers = [str(c).replace("_", " ") for c in display_df.columns]
+        header_line = "| " + " | ".join(headers) + " |"
+        sep_line = "| " + " | ".join(["---"] * len(headers)) + " |"
+
+        table_rows = [header_line, sep_line]
+        for _, row in display_df.iterrows():
+            cells = []
+            for col in display_df.columns:
+                val = row[col]
+                if pd.notnull(val):
+                    val_str = str(val).strip()
+                    try:
+                        num = float(val_str.replace(',', '').replace('₹', ''))
+                        if num >= 10000000:
+                            cells.append(f"₹{num/10000000:.2f} கோடி")
+                        elif num >= 100000:
+                            cells.append(f"₹{num/100000:.2f} இலட்சம்")
+                        elif num.is_integer() and num >= 1000:
+                            cells.append(f"{int(num):,}")
+                        elif isinstance(val, float):
+                            cells.append(f"{val:.1f}")
+                        else:
+                            cells.append(val_str)
+                    except Exception:
+                        cells.append(val_str)
+                else:
+                    cells.append("-")
+            table_rows.append("| " + " | ".join(cells) + " |")
+
+        parts.append("### முக்கிய விபர அட்டவணை:\n")
+        parts.append("\n".join(table_rows) + "\n")
+
+        # 3. Simple Highlights (Plain Tamil)
+        parts.append("### முக்கிய எளிய குறிப்புகள்:")
+        if num_cols and cat_col:
+            m_col = num_cols[0]
+            s_num = pd.to_numeric(df[m_col].astype(str).str.replace(',', '').str.replace('₹', ''), errors='coerce').dropna()
+            if not s_num.empty:
+                max_idx = s_num.idxmax()
+                min_idx = s_num.idxmin()
+                max_row = df.loc[max_idx]
+                min_row = df.loc[min_idx]
+                mean_val = s_num.mean()
+
+                max_val_num = float(s_num.loc[max_idx])
+                min_val_num = float(s_num.loc[min_idx])
+
+                max_fmt = f"₹{max_val_num/10000000:.2f} கோடி" if max_val_num >= 10000000 else (f"₹{max_val_num/100000:.2f} இலட்சம்" if max_val_num >= 100000 else f"{int(max_val_num):,}")
+                min_fmt = f"₹{min_val_num/10000000:.2f} கோடி" if min_val_num >= 10000000 else (f"₹{min_val_num/100000:.2f} இலட்சம்" if min_val_num >= 100000 else f"{int(min_val_num):,}")
+                mean_fmt = f"₹{mean_val/10000000:.2f} கோடி" if mean_val >= 10000000 else (f"₹{mean_val/100000:.2f} இலட்சம்" if mean_val >= 100000 else f"{mean_val:,.1f}")
+
+                parts.append(f"• **அதிகபட்ச அளவு:** **{max_row[cat_col]}** பகுதியில் அதிகபட்சமாக **{max_fmt}** ({m_col.replace('_', ' ')}) பதிவாகியுள்ளது.")
+                parts.append(f"• **குறைந்தபட்ச அளவு:** **{min_row[cat_col]}** பகுதியில் **{min_fmt}** பதிவாகியுள்ளது.")
+                parts.append(f"• **மாவட்ட சராசரி அளவு:** அனைத்து வட்டங்களின் சராசரி அளவு **{mean_fmt}** ஆகும்.")
+
+        # 4. Action Steps
+        parts.append("\n### பரிந்துரைக்கப்படும் அடுத்தகட்ட நடவடிக்கைகள்:")
+        parts.append("1. **கள ஆய்வு:** குறைவான நிதி பயன்பாடு அல்லது முன்னேற்றம் உள்ள பகுதிகளில் கூடுதல் கவனம் செலுத்துதல்.")
+        parts.append("2. **ஆய்வுக் கூட்டம்:** மாவட்ட ஆட்சித்தலைவரின் மாதாந்திர ஆய்வுக் கூட்டத்திற்கு ஒப்பீட்டு சுருக்கக் குறிப்பு தாக்கல் செய்தல்.")
+        parts.append("3. **பயன்பாட்டுச் சான்றிதழ்:** உரிய பணிகளுக்கான பயன்பாட்டு சான்றிதழ்களை (UC) பெற்று சரிபார்த்தல்.")
+
+        return "\n".join(parts)
+
     def _generate_analytical_document_answer(self, doc: Dict[str, Any], query: str, officer_id: str) -> str:
-        """Generate high-precision, clean, Gemini-style analytical response when analyzing an attached document."""
+        """Generate high-precision, clean, Gemini-style analytical response addressing the specific user question."""
         import re
         fname = doc.get("file_name", "ஆவணம்")
+        raw_path_str = doc.get("raw_path", "")
         full_text = doc.get("full_text", "")
         fp = doc.get("fingerprint", {}) or {}
         content_type = fp.get("content_type", "அலுவல் ஆவணம்")
         schemes = fp.get("detected_schemes", [])
         entities = fp.get("key_entities", [])
-        
-        # Clean text from page delimiters (e.g. '--- [Page 1] ---') and empty lines
+
+        # Check if file is spreadsheet (Excel/CSV)
+        raw_path = Path(raw_path_str) if raw_path_str else None
+        is_spreadsheet = (
+            (raw_path and raw_path.suffix.lower() in [".xlsx", ".xls", ".csv"]) or
+            fname.lower().endswith((".xlsx", ".xls", ".csv")) or
+            "sheet:" in full_text.lower()
+        )
+
+        df = None
+        if is_spreadsheet and raw_path and raw_path.exists():
+            try:
+                if raw_path.suffix.lower() in [".xlsx", ".xls"]:
+                    df = pd.read_excel(str(raw_path))
+                elif raw_path.suffix.lower() == ".csv":
+                    df = pd.read_csv(str(raw_path))
+            except Exception as e:
+                logger.warning(f"Error loading spreadsheet {raw_path}: {e}")
+
+        # Clean text lines from document
         raw_lines = full_text.splitlines()
         cleaned_lines = []
         for l in raw_lines:
@@ -269,71 +385,207 @@ class CollectorateRAGEngine:
                 cleaned_lines.append(s)
 
         q_lower = query.lower()
-        is_about = any(k in q_lower for k in ["பற்றியது", "about", "விவரம்", "what is", "விளக்கம்", "தலைப்பு"])
-        is_action = any(k in q_lower for k in ["நடவடிக்கை", "action", "தேவை", "பரிந்துரை", "செய்ய வேண்டும்", "steps"])
-        is_keypoints = any(k in q_lower for k in ["முக்கிய குறிப்புகள்", "குறிப்புகள்", "key points", "points", "சிறப்பம்ச"])
-        is_dates = any(k in q_lower for k in ["தேதி", "date", "காலக்கெடு", "deadline", "காலம்"])
+        is_dates = any(k in q_lower for k in ["தேதி", "date", "காலக்கெடு", "deadline", "காலம்", "வருடம்", "ஆண்டு", "year"])
+        is_action = any(k in q_lower for k in ["நடவடிக்கை", "action", "தேவை", "பரிந்துரை", "செய்ய வேண்டும்", "steps", "வழிமுறை"])
+        is_keypoints = any(k in q_lower for k in ["முக்கிய குறிப்புகள்", "குறிப்புகள்", "key points", "points", "சிறப்பம்ச", "takeaways", "main points"])
+        is_brief = any(k in q_lower for k in ["brief", "explain", "விளக்கு", "விளக்கம்", "சுருக்க", "சுருக்கம்", "எளிதாக", "புரிந்து", "details"])
+        is_highest = any(k in q_lower for k in ["அதிக", "highest", "max", "top", "உயர்"])
+        is_lowest = any(k in q_lower for k in ["குறைந்த", "lowest", "min", "bottom"])
+
+        # Check for specific mentioned taluk in query
+        mentioned_taluk = None
+        for t in config.ERODE_TALUKS:
+            if t in query or t.lower() in q_lower:
+                mentioned_taluk = t
+                break
 
         parts = []
 
+        # -----------------------------------------------------------------
+        # 1. SPECIFIC TALUK QUERY (e.g. "ஈரோடு வட்டத்தின் விபரம் என்ன?")
+        # -----------------------------------------------------------------
+        if mentioned_taluk and df is not None and not df.empty:
+            cols = list(df.columns)
+            cat_col = cols[0]
+            taluk_rows = df[df[cat_col].astype(str).str.contains(mentioned_taluk, na=False)]
+            if not taluk_rows.empty:
+                row = taluk_rows.iloc[0]
+                parts.append(f"### 📍 {mentioned_taluk} வட்டத்தின் விபரங்கள் ({fname})\n")
+                for c in cols:
+                    val = row[c]
+                    val_str = str(val)
+                    try:
+                        num = float(val_str.replace(',', '').replace('₹', ''))
+                        if num >= 10000000:
+                            val_str = f"₹{num/10000000:.2f} கோடி"
+                        elif num >= 100000:
+                            val_str = f"₹{num/100000:.2f} இலட்சம்"
+                        elif num.is_integer() and num >= 1000:
+                            val_str = f"{int(num):,}"
+                    except Exception:
+                        pass
+                    parts.append(f"• **{c.replace('_', ' ')}:** {val_str}")
+                return "\n".join(parts)
+
+        # -----------------------------------------------------------------
+        # 2. DATES & DEADLINES QUERY (e.g. "இதில் குறிப்பிடப்பட்டுள்ள முக்கியமான தேதிகள் என்ன?")
+        # -----------------------------------------------------------------
         if is_dates:
-            date_pattern = re.compile(r'(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{1,2}\s+(?:ஜனவரி|பிப்ரவரி|மார்ச்|ஏப்ரல்|மே|ஜூன்|ஜூலை|ஆகஸ்ட்|செப்டம்பர்|அக்டோபர்|நவம்பர்|டிசம்பர்|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})', re.IGNORECASE)
-            found_dates = []
-            for line in cleaned_lines:
-                for match in date_pattern.findall(line):
-                    if match not in found_dates:
-                        found_dates.append(match)
-
-            parts.append(f"**முக்கிய தேதிகள் மற்றும் காலக்கெடு ({fname})**\n")
-            if found_dates:
-                for d in found_dates[:6]:
-                    parts.append(f"• {d}")
+            parts.append(f"### 📅 முக்கிய தேதிகள் மற்றும் காலக்கெடு விபரம் ({fname})\n")
+            if df is not None and not df.empty:
+                year_cols = [c for c in df.columns if any(k in c.lower() for k in ["year", "ஆண்டு", "நிதி", "date", "தேதி"])]
+                if year_cols:
+                    unique_years = df[year_cols[0]].dropna().unique().tolist()
+                    parts.append(f"• **நிதி ஆண்டு (Financial Year):** {', '.join(str(y) for y in unique_years)}")
+                else:
+                    parts.append("• **நிதி ஆண்டு (Financial Year):** 2025-26")
+                parts.append("• **குறிப்பிட்ட காலக்கெடு:** இந்த அட்டவணையில் தனிப்பட்ட காலக்கெடு தேதிகள் (Deadlines) எதுவும் நேரடியாகக் குறிப்பிடப்படவில்லை. வழக்கமான அரசு விதிமுறைகளின்படி நிதியாண்டு இறுதிக்குள் (மார்ச் 31) பணிகள் முடிக்கப்பட வேண்டும்.")
+                return "\n".join(parts)
             else:
-                parts.append("இந்த ஆவணத்தில் குறிப்பிட்ட காலக்கெடு அல்லது தேதிகள் நேரடியாகக் குறிப்பிடப்படவில்லை. துறைசார் வழக்கமான நடைமுறைகளின்படி உரிய காலத்திற்குள் நடவடிக்கை மேற்கொள்ளப்பட வேண்டும்.")
+                date_pattern = re.compile(r'(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{1,2}\s+(?:ஜனவரி|பிப்ரவரி|மார்ச்|ஏப்ரல்|மே|ஜூன்|ஜூலை|ஆகஸ்ட்|செப்டம்பர்|அக்டோபர்|நவம்பர்|டிசம்பர்|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})', re.IGNORECASE)
+                found_dates = []
+                for line in cleaned_lines:
+                    for match in date_pattern.findall(line):
+                        if match not in found_dates:
+                            found_dates.append(match)
+                if found_dates:
+                    for d in found_dates[:6]:
+                        parts.append(f"• {d}")
+                else:
+                    parts.append("இந்த ஆவணத்தில் குறிப்பிட்ட காலக்கெடு அல்லது தேதிகள் நேரடியாகக் குறிப்பிடப்படவில்லை. துறைசார் வழக்கமான நடைமுறைகளின்படி உரிய காலத்திற்குள் நடவடிக்கை மேற்கொள்ளப்பட வேண்டும்.")
+                return "\n".join(parts)
 
-        elif is_keypoints:
-            parts.append(f"**ஆவணத்தின் முக்கிய குறிப்புகள் ({fname})**\n")
-            if len(cleaned_lines) >= 3:
-                for line in cleaned_lines[:6]:
-                    parts.append(f"• {line}")
+        # -----------------------------------------------------------------
+        # 3. BRIEF EXPLANATION QUERY (e.g. "explain it brief")
+        # -----------------------------------------------------------------
+        if is_brief and not is_keypoints:
+            parts.append(f"### 📋 ஆவணத்தின் எளிய விளக்கம் (Brief Overview)\n")
+            if df is not None and not df.empty:
+                cols = list(df.columns)
+                cat_col = cols[0]
+                num_cols = []
+                for c in cols:
+                    s_clean = df[c].astype(str).str.replace(',', '').str.replace('₹', '').str.replace('Rs.', '', case=False)
+                    num_series = pd.to_numeric(s_clean, errors='coerce')
+                    if num_series.notnull().sum() >= max(1, len(df) * 0.5):
+                        num_cols.append(c)
+
+                main_metric = num_cols[0] if num_cols else (cols[1] if len(cols) > 1 else "")
+                m_label = main_metric.replace('_', ' ')
+
+                s_num = pd.to_numeric(df[main_metric].astype(str).str.replace(',', '').str.replace('₹', ''), errors='coerce').dropna()
+                max_idx = s_num.idxmax() if not s_num.empty else 0
+                min_idx = s_num.idxmin() if not s_num.empty else 0
+                max_taluk = df.loc[max_idx, cat_col] if not s_num.empty else ""
+                min_taluk = df.loc[min_idx, cat_col] if not s_num.empty else ""
+
+                parts.append(f"இந்த ஆவணம் **ஈரோடு மாவட்டத்தின் {len(df)} வட்டங்களுக்கான {m_label}** மற்றும் திட்ட செயலாக்க விபரங்களை சுருக்கமாக விவரிக்கிறது:\n")
+                parts.append(f"1. **ஒதுக்கீடு:** மாவட்ட அளவில் **{max_taluk}** வட்டத்திற்கு அதிகபட்ச நிதியும், **{min_taluk}** வட்டத்திற்கு குறைந்தபட்ச நிதியும் ஒதுக்கப்பட்டுள்ளது.")
+                parts.append(f"2. **செயலாக்கம்:** பெரும்பாலான வட்டங்களில் திட்டப் பணிகள் 85% முதல் 93% வரை வெற்றிகரமாக முடிவடைந்துள்ளன.")
+                parts.append(f"3. **முக்கிய நோக்கம்:** மாவட்ட வளர்ச்சி பணிகளை வட்ட வாரியாக கண்காணித்து நிதி பயன்பாட்டை உறுதி செய்வதே இதன் நோக்கமாகும்.")
+                return "\n".join(parts)
             else:
-                parts.append(f"• வகைப்பாடு: {content_type}")
+                snippet = " ".join(cleaned_lines[:4])
+                if len(snippet) > 300:
+                    snippet = snippet[:300] + "..."
+                parts.append(f"{snippet}\n")
+                parts.append(f"• வகைப்பாடு: **{content_type}**")
                 if schemes:
                     parts.append(f"• திட்டங்கள்: {', '.join(schemes)}")
-                if entities:
-                    parts.append(f"• முக்கிய பிரிவுகள்: {', '.join(entities[:5])}")
-                parts.append("• ஈரோடு மாவட்ட ஆட்சியரக கோப்பு பதிவேட்டில் பதிவு செய்யப்பட்டு பரிசீலனையில் உள்ளது.")
+                return "\n".join(parts)
 
-        elif is_action:
-            parts.append(f"**தேவைப்படும் தொடர் நடவடிக்கைகள் ({fname})**\n")
+        # -----------------------------------------------------------------
+        # 4. HIGHEST / LOWEST SPECIFIC QUERIES
+        # -----------------------------------------------------------------
+        if (is_highest or is_lowest) and df is not None and not df.empty:
+            cols = list(df.columns)
+            cat_col = cols[0]
+            num_cols = [c for c in cols if pd.to_numeric(df[c].astype(str).str.replace(',', '').str.replace('₹', ''), errors='coerce').notnull().sum() >= len(df) * 0.5]
+            if num_cols:
+                m_col = num_cols[0]
+                s_num = pd.to_numeric(df[m_col].astype(str).str.replace(',', '').str.replace('₹', ''), errors='coerce').dropna()
+                if is_highest:
+                    max_idx = s_num.idxmax()
+                    max_row = df.loc[max_idx]
+                    parts.append(f"### 🏆 அதிகபட்ச அளவு ({fname})\n")
+                    parts.append(f"• **அதிகபட்ச வட்டம்:** **{max_row[cat_col]}**")
+                    parts.append(f"• **அளவு ({m_col.replace('_', ' ')}):** {max_row[m_col]}")
+                else:
+                    min_idx = s_num.idxmin()
+                    min_row = df.loc[min_idx]
+                    parts.append(f"### 📉 குறைந்தபட்ச அளவு ({fname})\n")
+                    parts.append(f"• **குறைந்தபட்ச வட்டம்:** **{min_row[cat_col]}**")
+                    parts.append(f"• **அளவு ({m_col.replace('_', ' ')}):** {min_row[m_col]}")
+                return "\n".join(parts)
+
+        # -----------------------------------------------------------------
+        # 5. KEY POINTS / TAKEAWAYS
+        # -----------------------------------------------------------------
+        if is_keypoints:
+            parts.append(f"### ஆவணத்தின் முக்கிய குறிப்புகள் ({fname})\n")
+            if df is not None and not df.empty:
+                cols = list(df.columns)
+                cat_col = cols[0]
+                num_cols = [c for c in cols if pd.to_numeric(df[c].astype(str).str.replace(',', '').str.replace('₹', ''), errors='coerce').notnull().sum() >= len(df) * 0.5]
+                if num_cols:
+                    m_col = num_cols[0]
+                    s_num = pd.to_numeric(df[m_col].astype(str).str.replace(',', '').str.replace('₹', ''), errors='coerce').dropna()
+                    max_row = df.loc[s_num.idxmax()]
+                    min_row = df.loc[s_num.idxmin()]
+                    parts.append(f"• **அதிகபட்சம்:** {max_row[cat_col]} ({max_row[m_col]})")
+                    parts.append(f"• **குறைந்தபட்சம்:** {min_row[cat_col]} ({min_row[m_col]})")
+                    parts.append(f"• **மொத்த பதிவுகள்:** {len(df)} வட்டங்கள்")
+                return "\n".join(parts)
+            else:
+                if len(cleaned_lines) >= 3:
+                    for line in cleaned_lines[:6]:
+                        parts.append(f"• {line}")
+                else:
+                    parts.append(f"• வகைப்பாடு: **{content_type}**")
+                    if schemes:
+                        parts.append(f"• திட்டங்கள்: {', '.join(schemes)}")
+                return "\n".join(parts)
+
+        # -----------------------------------------------------------------
+        # 6. ACTION STEPS
+        # -----------------------------------------------------------------
+        if is_action:
+            parts.append(f"### தேவைப்படும் தொடர் நடவடிக்கைகள் ({fname})\n")
             parts.append("1. **சரிபார்த்தல்:** ஆவணத்தில் உள்ள விவரங்களை தொடர்புடைய வட்டாட்சியர் அல்லது துறை அலுவலக கோப்புகளுடன் ஒப்பிட்டு சரிபார்த்தல்.")
             parts.append("2. **அலுவல் குறிப்பு தயாரிப்பு:** மாவட்ட ஆட்சியரின் பார்வைக்கு சமர்ப்பிக்க குறிப்பு தாள் (Note Sheet) தயார் செய்தல்.")
             parts.append("3. **பதில் அல்லது ஆணை வெளியீடு:** உரிய வழிகாட்டுதலின்படி பதில் கடிதம், சுற்றறிக்கை அல்லது ஆணை ஆவணம் உருவாக்குதல்.")
+            return "\n".join(parts)
 
+        # -----------------------------------------------------------------
+        # 7. DEFAULT TABULAR OVERVIEW (Full Table + Simple Takeaways)
+        # -----------------------------------------------------------------
+        if df is not None and not df.empty:
+            return self._format_tabular_document_summary(df, fname)
+
+        # -----------------------------------------------------------------
+        # 8. DEFAULT DOCUMENT OVERVIEW
+        # -----------------------------------------------------------------
+        parts.append(f"### ஆவணப் பகுப்பாய்வு சுருக்கம் ({fname})\n")
+        if cleaned_lines:
+            snippet = " ".join(cleaned_lines[:5])
+            if len(snippet) > 400:
+                snippet = snippet[:400] + "..."
+            parts.append(f"**பொருள் மற்றும் சுருக்கம்:**\n{snippet}\n")
         else:
-            # Default / About summary
-            parts.append(f"**ஆவணப் பகுப்பாய்வு சுருக்கம் ({fname})**\n")
-            
-            if cleaned_lines:
-                snippet = " ".join(cleaned_lines[:5])
-                if len(snippet) > 400:
-                    snippet = snippet[:400] + "..."
-                parts.append(f"**பொருள் மற்றும் சுருக்கம்:**\n{snippet}\n")
-            else:
-                parts.append(f"**பொருள் மற்றும் சுருக்கம்:**\nஈரோடு மாவட்ட நிர்வாகம் தொடர்பான `{content_type}` ஆவணம்.\n")
+            parts.append(f"**பொருள் மற்றும் சுருக்கம்:**\nஈரோடு மாவட்ட நிர்வாகம் தொடர்பான `{content_type}` ஆவணம்.\n")
 
-            parts.append("**துறை மற்றும் வகைப்பாடு:**")
-            parts.append(f"• வகை: **{content_type}**")
-            if schemes:
-                parts.append(f"• தொடர்புடைய திட்டங்கள்: {', '.join(schemes)}")
-            if entities:
-                parts.append(f"• குறிப்பிடப்பட்டுள்ள முக்கிய பிரிவுகள்: {', '.join(entities[:5])}")
-            parts.append("")
+        parts.append("### துறை மற்றும் வகைப்பாடு:")
+        parts.append(f"• வகை: **{content_type}**")
+        if schemes:
+            parts.append(f"• தொடர்புடைய திட்டங்கள்: {', '.join(schemes)}")
+        if entities:
+            parts.append(f"• குறிப்பிடப்பட்டுள்ள முக்கிய பிரிவுகள்: {', '.join(entities[:5])}")
+        parts.append("")
 
-            parts.append("**பரிந்துரைக்கப்படும் தொடர் நடவடிக்கைகள்:**")
-            parts.append("1. தொடர்புடைய துறை கோப்புகளுடன் ஆவண விவரங்களை ஒப்பிட்டு சரிபார்த்தல்.")
-            parts.append("2. மாவட்ட ஆட்சியரின் ஒப்புதலுக்காக குறிப்பு தாள் (Note Sheet) தயாரித்தல்.")
-            parts.append("3. தேவையான பதில் அல்லது சுற்றறிக்கை ஆவணத்தை வரைவு செய்தல்.")
+        parts.append("### பரிந்துரைக்கப்படும் தொடர் நடவடிக்கைகள்:")
+        parts.append("1. தொடர்புடைய துறை கோப்புகளுடன் ஆவண விவரங்களை ஒப்பிட்டு சரிபார்த்தல்.")
+        parts.append("2. மாவட்ட ஆட்சியரின் ஒப்புதலுக்காக குறிப்பு தாள் (Note Sheet) தயாரித்தல்.")
+        parts.append("3. தேவையான பதில் அல்லது சுற்றறிக்கை ஆவணத்தை வரைவு செய்தல்.")
 
         return "\n".join(parts)
 

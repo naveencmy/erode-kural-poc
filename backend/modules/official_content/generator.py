@@ -372,13 +372,46 @@ def _generate_ref_number(prefix: str) -> str:
     return f"ERD/{prefix}/{now.year}/{seq}"
 
 
+def _get_active_ollama_model() -> str:
+    """Detect installed active model from local Ollama prioritizing Qwen 2.5 7B."""
+    try:
+        resp = requests.get(f"{config.OLLAMA_API_BASE}/api/tags", timeout=1.5)
+        if resp.status_code == 200:
+            tags = resp.json().get("models", [])
+            installed_names = [m.get("name") for m in tags if m.get("name")]
+            preferred = [
+                "qwen2.5:7b-instruct-q4_K_M",
+                "qwen2.5:7b",
+                "qwen2.5:latest",
+                config.OLLAMA_MODEL,
+                "qwen2.5",
+                "qwen2.5:3b",
+                "qwen2.5:1.5b",
+                "mistral:7b-instruct-q4_K_M",
+                "phi4-mini:latest",
+                "llama3.2:1b",
+            ]
+            for pref in preferred:
+                if pref in installed_names:
+                    return pref
+                for inst in installed_names:
+                    if pref.split(":")[0] in inst:
+                        return inst
+            if installed_names:
+                return installed_names[0]
+    except Exception:
+        pass
+    return config.OLLAMA_MODEL
+
+
 def _try_ollama(prompt: str) -> Optional[str]:
     """Attempt to generate content via local Ollama LLM. Returns None on failure."""
+    model_name = _get_active_ollama_model()
     try:
         response = requests.post(
             f"{config.OLLAMA_API_BASE}/api/generate",
             json={
-                "model": config.OLLAMA_MODEL,
+                "model": model_name,
                 "prompt": prompt,
                 "stream": False,
                 "options": {
@@ -393,7 +426,7 @@ def _try_ollama(prompt: str) -> Optional[str]:
             data = response.json()
             generated = data.get("response", "").strip()
             if generated and len(generated) > 20:
-                logger.info("Ollama LLM generated content successfully.")
+                logger.info(f"Ollama LLM ({model_name}) generated content successfully.")
                 return generated
     except requests.exceptions.ConnectionError:
         logger.info("Ollama not available — using deterministic fallback.")

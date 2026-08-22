@@ -105,6 +105,77 @@ const FormattedMessage = ({ text, isUser }) => {
   const blocks = [];
   let currentList = [];
   let listType = null; // 'bullet' or 'numbered'
+  let currentTable = [];
+
+  const flushTable = () => {
+    if (currentTable.length > 0) {
+      const headerRow = currentTable[0];
+      const dataRows = currentTable.slice(1).filter((r) => !r.every((c) => /^[-:]+$/.test(c.trim())));
+
+      blocks.push(
+        <div
+          key={`table-wrap-${blocks.length}`}
+          style={{
+            margin: '12px 0 16px 0',
+            overflowX: 'auto',
+            borderRadius: '10px',
+            border: '1px solid var(--color-border, #e2e8f0)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+            background: 'var(--color-surface-card, #ffffff)',
+          }}
+        >
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ background: 'var(--color-surface-hover, #f8fafc)', borderBottom: '2px solid var(--color-border, #cbd5e1)' }}>
+                {headerRow.map((h, i) => (
+                  <th
+                    key={i}
+                    style={{
+                      padding: '10px 14px',
+                      fontWeight: 650,
+                      color: 'var(--color-text-primary, #0f172a)',
+                      whiteSpace: 'nowrap',
+                      letterSpacing: '0.01em',
+                    }}
+                  >
+                    {renderInlineFormatting(h.trim())}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {dataRows.map((row, rIdx) => (
+                <tr
+                  key={rIdx}
+                  style={{
+                    borderBottom: rIdx === dataRows.length - 1 ? 'none' : '1px solid var(--color-border, #f1f5f9)',
+                    background: rIdx % 2 === 1 ? 'rgba(0,0,0,0.015)' : 'transparent',
+                    transition: 'background 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(59, 130, 246, 0.04)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = rIdx % 2 === 1 ? 'rgba(0,0,0,0.015)' : 'transparent')}
+                >
+                  {row.map((cell, cIdx) => (
+                    <td
+                      key={cIdx}
+                      style={{
+                        padding: '9px 14px',
+                        color: 'var(--color-text-primary, #334155)',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {renderInlineFormatting(cell.trim())}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      currentTable = [];
+    }
+  };
 
   const flushList = () => {
     if (currentList.length > 0) {
@@ -157,7 +228,21 @@ const FormattedMessage = ({ text, isUser }) => {
     const line = rawLine.trim();
     if (!line) {
       flushList();
+      flushTable();
       return;
+    }
+
+    // Markdown Table Line Detection (| col1 | col2 |)
+    const isTableLine = line.startsWith('|') && line.includes('|', 1);
+    if (isTableLine) {
+      flushList();
+      const cells = line.split('|').slice(1, -1);
+      if (cells.length > 0) {
+        currentTable.push(cells);
+        return;
+      }
+    } else {
+      flushTable();
     }
 
     // Bullet item (e.g. • or - or *)
@@ -183,13 +268,13 @@ const FormattedMessage = ({ text, isUser }) => {
     // Headings
     if (line.startsWith('### ')) {
       blocks.push(
-        <h4 key={`h-${idx}`} style={{ margin: '10px 0 4px 0', fontSize: '1rem', fontWeight: 700, color: 'inherit' }}>
+        <h4 key={`h-${idx}`} style={{ margin: '12px 0 6px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary, inherit)' }}>
           {renderInlineFormatting(line.slice(4))}
         </h4>
       );
     } else if (line.startsWith('## ') || line.startsWith('# ')) {
       blocks.push(
-        <h3 key={`h-${idx}`} style={{ margin: '12px 0 6px 0', fontSize: '1.08rem', fontWeight: 700, color: 'inherit' }}>
+        <h3 key={`h-${idx}`} style={{ margin: '14px 0 8px 0', fontSize: '1.08rem', fontWeight: 700, color: 'var(--color-text-primary, inherit)' }}>
           {renderInlineFormatting(line.replace(/^#+\s*/, ''))}
         </h3>
       );
@@ -203,6 +288,7 @@ const FormattedMessage = ({ text, isUser }) => {
   });
 
   flushList();
+  flushTable();
 
   return <div style={{ display: 'flex', flexDirection: 'column' }}>{blocks}</div>;
 };

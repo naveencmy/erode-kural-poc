@@ -170,9 +170,14 @@ def run_all(port: int = 8000):
     logger.info("Initializing SQLite DB schema...")
     init_db()
     seed_sample_petitions()
-    process_all_pending()
+    
+    # Process pending items in background thread so API server starts instantly without blocking
+    import threading
+    threading.Thread(target=process_all_pending, daemon=True, name="InitialPendingProcessor").start()
+    
     logger.info(f"Starting Backend API on port {port} with integrated File Watcher...")
     run_api(port=port)
+
 
 
 def main():

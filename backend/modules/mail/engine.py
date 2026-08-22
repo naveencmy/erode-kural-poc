@@ -183,6 +183,26 @@ def test_mail_servers(
     return results
 
 
+from email.header import decode_header
+
+
+def _decode_mime_header(header_value: Optional[str]) -> str:
+    """Safely decode RFC2047 MIME encoded email headers into unicode strings."""
+    if not header_value:
+        return ""
+    try:
+        decoded_parts = decode_header(header_value)
+        result = []
+        for part, encoding in decoded_parts:
+            if isinstance(part, bytes):
+                result.append(part.decode(encoding or "utf-8", errors="replace"))
+            else:
+                result.append(str(part))
+        return "".join(result)
+    except Exception:
+        return str(header_value)
+
+
 def fetch_recent_inbox_emails(
     imap_server: Optional[str] = None,
     imap_port: Optional[int] = None,
@@ -190,7 +210,7 @@ def fetch_recent_inbox_emails(
     imap_pwd: Optional[str] = None,
     limit: int = 20,
 ) -> Dict[str, Any]:
-    """Fetch recent incoming emails from IMAP INBOX."""
+    """Fetch recent incoming emails from IMAP INBOX with fast header retrieval."""
     srv = imap_server or config.IMAP_SERVER
     port = imap_port or config.IMAP_PORT
     usr = imap_user or config.IMAP_USERNAME
@@ -204,61 +224,67 @@ def fetch_recent_inbox_emails(
     emails_list = []
     try:
         if port == 993:
-            mail = imaplib.IMAP4_SSL(srv, port, timeout=12)
+            mail = imaplib.IMAP4_SSL(srv, port, timeout=10)
         else:
-            mail = imaplib.IMAP4(srv, port, timeout=12)
+            mail = imaplib.IMAP4(srv, port, timeout=10)
             mail.starttls()
 
         mail.login(usr, pwd)
         mail.select("INBOX", readonly=True)
-        status, response = mail.search(None, "ALL")
+        
+        # Use UID search for reliable message identification
+        status, response = mail.uid("search", None, "ALL")
 
         if status == "OK" and response and response[0]:
-            msg_ids = response[0].split()
-            target_ids = msg_ids[-limit:] if len(msg_ids) > limit else msg_ids
+            uids = response[0].split()
+            target_uids = uids[-limit:] if len(uids) > limit else uids
+            
+            # Fetch headers in reverse order (newest first)
+            for uid_bytes in reversed(target_uids):
+                uid_str = uid_bytes.decode("utf-8")
+                try:
+                    # Fast fetch: only headers and text snippet (avoids downloading large attachments)
+                    res, data = mail.uid("fetch", uid_bytes, "(BODY.PEEK[HEADER] BODY.PEEK[TEXT]<0.500>)")
+                    if res == "OK" and data:
+                        raw_header = b""
+                        raw_body_snippet = b""
+                        for part in data:
+                            if isinstance(part, tuple) and len(part) >= 2:
+                                if b"HEADER" in part[0]:
+                                    raw_header += part[1]
+                                elif b"TEXT" in part[0]:
+                                    raw_body_snippet += part[1]
+                                else:
+                                    raw_header += part[1]
 
-            for m_id in reversed(target_ids):
-                uid_str = m_id.decode("utf-8")
-                res, data = mail.fetch(m_id, "(BODY.PEEK[])")
-                if res == "OK" and data and data[0]:
-                    raw_bytes = data[0][1]
-                    parsed_msg = BytesParser(policy=policy.default).parsebytes(raw_bytes)
+                        parsed_msg = BytesParser(policy=policy.default).parsebytes(raw_header)
+                        
+                        subject = _decode_mime_header(parsed_msg.get("Subject")) or "(தலைப்பு இல்லை / No Subject)"
+                        sender = _decode_mime_header(parsed_msg.get("From")) or "தெரியாதவர்"
+                        recipient = _decode_mime_header(parsed_msg.get("To")) or usr
+                        date_str = str(parsed_msg.get("Date", ""))
 
-                    # Extract body text snippet
-                    body_text = ""
-                    if parsed_msg.is_multipart():
-                        for part in parsed_msg.walk():
-                            if part.get_content_type() == "text/plain":
-                                try:
-                                    body_text = part.get_content()
-                                    break
-                                except Exception:
-                                    pass
-                    else:
-                        try:
-                            body_text = parsed_msg.get_content()
-                        except Exception:
-                            pass
+                        snippet = ""
+                        if raw_body_snippet:
+                            try:
+                                snippet = raw_body_snippet.decode("utf-8", errors="replace").strip()
+                            except Exception:
+                                snippet = str(raw_body_snippet)[:180]
 
-                    # Extract attachments list
-                    attachments = []
-                    if parsed_msg.is_multipart():
-                        for part in parsed_msg.walk():
-                            fn = part.get_filename()
-                            if fn:
-                                attachments.append(fn)
-
-                    emails_list.append({
-                        "uid": uid_str,
-                        "subject": parsed_msg.get("Subject", "(தலைப்பு இல்லை / No Subject)"),
-                        "sender": parsed_msg.get("From", "தெரியாதவர்"),
-                        "recipient": parsed_msg.get("To", usr),
-                        "date": parsed_msg.get("Date", ""),
-                        "snippet": (body_text or "")[:180],
-                        "has_attachments": len(attachments) > 0,
-                        "attachments": attachments,
-                        "is_ingested": False,
-                    })
+                        emails_list.append({
+                            "uid": uid_str,
+                            "subject": subject,
+                            "sender": sender,
+                            "recipient": recipient,
+                            "date": date_str,
+                            "snippet": snippet[:180],
+                            "has_attachments": False,
+                            "attachments": [],
+                            "is_ingested": False,
+                        })
+                except Exception as item_err:
+                    logger.debug(f"Skipping UID {uid_str} due to fetch issue: {item_err}")
+                    continue
 
         return {
             "status": "success",
@@ -411,15 +437,25 @@ def ingest_email_by_uid(
         mail = None
         try:
             if port == 993:
-                mail = imaplib.IMAP4_SSL(srv, port, timeout=12)
+                mail = imaplib.IMAP4_SSL(srv, port, timeout=20)
             else:
-                mail = imaplib.IMAP4(srv, port, timeout=12)
+                mail = imaplib.IMAP4(srv, port, timeout=20)
                 mail.starttls()
             mail.login(usr, pwd)
             mail.select("INBOX", readonly=True)
-            res, data = mail.fetch(uid.encode("utf-8"), "(BODY.PEEK[])")
-            if res == "OK" and data and data[0]:
+            
+            # First attempt UID fetch
+            res, data = mail.uid("fetch", uid.encode("utf-8"), "(BODY.PEEK[])")
+            if res == "OK" and data and data[0] and isinstance(data[0], tuple):
                 raw_bytes = data[0][1]
+            else:
+                # Fallback to standard sequence fetch
+                res2, data2 = mail.fetch(uid.encode("utf-8"), "(BODY.PEEK[])")
+                if res2 == "OK" and data2 and data2[0] and isinstance(data2[0], tuple):
+                    raw_bytes = data2[0][1]
+        except (TimeoutError, imaplib.IMAP4.abort, imaplib.IMAP4.error, OSError) as imap_err:
+            logger.warning(f"IMAP fetch failed for UID {uid}: {imap_err}")
+            raise RuntimeError(f"மின்னஞ்சலை IMAP சர்வரிலிருந்து பெறுவதில் தாமதம்/தோல்வி ({imap_err})")
         finally:
             if mail:
                 try:
@@ -428,7 +464,7 @@ def ingest_email_by_uid(
                     pass
 
     if not raw_bytes:
-        raise ValueError(f"Could not retrieve raw email content for UID {uid}")
+        raise ValueError(f"மின்னஞ்சல் உள்ளடக்கத்தைப் பெற முடியவில்லை (UID: {uid})")
 
     # Process through pipeline
     source_id, saved_path = process_raw_email(raw_bytes, filename=filename)
@@ -451,6 +487,7 @@ def ingest_email_by_uid(
         "file_name": filename,
         "message": f"மின்னஞ்சல் வெற்றிகரமாக மனுவாக உட்கொள்ளப்பட்டது (Source ID: {source_id})",
     }
+
 
 
 def send_official_email(
