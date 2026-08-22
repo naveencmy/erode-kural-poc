@@ -57,6 +57,7 @@
     "reject": "Reject",
     "export_docx": "Export DOCX",
     "generate_file_no": "Generate File No.",
+    "send_mail": "Send Email",
     "no_items": "No workflow items found",
     "no_items_desc": "Upload new documents to start processing",
     "filter_all": "All",

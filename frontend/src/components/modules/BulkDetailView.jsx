@@ -7,6 +7,7 @@ import {
   editDraft,
   generateFileNumber,
   exportDocx,
+  sendOfficialEmail,
 } from '../../lib/api';
 import { formatDate, getStatusLabel, getPriorityLabel, downloadBlob } from '../../lib/utils';
 import ConfidenceBadge from '../shared/ConfidenceBadge';
@@ -23,6 +24,11 @@ import {
   Tag,
   FileCheck,
   Search,
+  Mail,
+  Send,
+  X,
+  AlertCircle,
+  Check,
 } from 'lucide-react';
 
 const TABS = ['tab_ocr', 'tab_entities', 'tab_classification', 'tab_draft', 'tab_grounding'];
@@ -38,6 +44,14 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
   const [draftText, setDraftText] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [fileNumber, setFileNumber] = useState(null);
+
+  // Send Mail Modal State
+  const [showMailModal, setShowMailModal] = useState(false);
+  const [mailRecipient, setMailRecipient] = useState('');
+  const [mailSubject, setMailSubject] = useState('');
+  const [mailBody, setMailBody] = useState('');
+  const [mailSending, setMailSending] = useState(false);
+  const [mailStatusMsg, setMailStatusMsg] = useState(null);
 
   useEffect(() => {
     loadDetail();
@@ -109,6 +123,51 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
     }
   };
 
+  const handleOpenMailModal = () => {
+    // Auto-detect email from extracted entities if available
+    const foundEmail = detail?.entities?.find(
+      (e) => e.entity_type?.toLowerCase() === 'email' || (e.entity_value && e.entity_value.includes('@'))
+    );
+    setMailRecipient(foundEmail?.entity_value || '');
+    setMailSubject(
+      `ஈரோடு மாவட்ட ஆட்சியர் அலுவலகம் - மனு ஒப்புகை / ஆணை (${fileNumber || sourceId.slice(0, 10)})`
+    );
+    setMailBody(draftText || detail?.draft?.draft_text || '');
+    setMailStatusMsg(null);
+    setShowMailModal(true);
+  };
+
+  const handleSendMail = async (e) => {
+    e?.preventDefault();
+    if (!mailRecipient || !mailRecipient.includes('@')) {
+      setMailStatusMsg({ type: 'error', text: 'செல்லுபடியாகும் பெறுநர் மின்னஞ்சல் முகவரி தேவை (Valid email required)' });
+      return;
+    }
+    setMailSending(true);
+    setMailStatusMsg(null);
+    try {
+      const res = await sendOfficialEmail({
+        recipient_email: mailRecipient,
+        subject: mailSubject,
+        body: mailBody,
+        officer_id: officerId,
+        source_id: sourceId,
+      });
+      setMailStatusMsg({
+        type: 'success',
+        text: res.message || 'அதிகாரப்பூர்வ மின்னஞ்சல் வெற்றிகரமாக அனுப்பப்பட்டது!',
+      });
+      setTimeout(() => {
+        setShowMailModal(false);
+        setMailStatusMsg(null);
+      }, 2000);
+    } catch (err) {
+      setMailStatusMsg({ type: 'error', text: err.message || 'மின்னஞ்சல் அனுப்புதல் தோல்வி' });
+    } finally {
+      setMailSending(false);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
@@ -167,12 +226,22 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
         </div>
 
         {/* Action Buttons */}
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn btn-ghost btn-sm" onClick={handleGenerateFileNo} disabled={actionLoading} title={t('bulk.generate_file_no')} style={{ fontSize: '0.88rem' }}>
             <Hash size={14} />
           </button>
           <button className="btn btn-ghost btn-sm" onClick={handleExportDocx} disabled={actionLoading} title={t('bulk.export_docx')} style={{ fontSize: '0.88rem' }}>
             <Download size={14} />
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={handleOpenMailModal}
+            disabled={actionLoading}
+            title={t('bulk.send_mail')}
+            style={{ fontSize: '0.88rem', color: 'var(--color-tn-primary)', borderColor: 'var(--color-tn-accent)' }}
+          >
+            <Mail size={14} />
+            <span className="tamil-text">{t('bulk.send_mail')}</span>
           </button>
           <button
             className="btn btn-success btn-sm"
@@ -481,6 +550,193 @@ export default function BulkDetailView({ sourceId, onBack, onRefresh }) {
           </div>
         )}
       </div>
+
+      {/* ─── Send Official Mail Modal ──────────────── */}
+      {showMailModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: 16,
+          }}
+          onClick={() => !mailSending && setShowMailModal(false)}
+        >
+          <div
+            className="animate-fade-in"
+            style={{
+              width: '100%',
+              maxWidth: 640,
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              backgroundColor: 'var(--color-surface-card, #1e293b)',
+              color: 'var(--color-text-primary, #f1f5f9)',
+              border: '1px solid var(--color-surface-border, #334155)',
+              borderRadius: 12,
+              padding: '24px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, borderBottom: '1px solid var(--color-surface-border, #334155)', paddingBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ padding: 8, borderRadius: 8, background: 'rgba(16, 185, 129, 0.15)', color: 'var(--color-tn-success, #22c55e)' }}>
+                  <Mail size={22} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--color-text-primary, #f1f5f9)' }} className="tamil-text">
+                    அதிகாரப்பூர்வ மின்னஞ்சல் அனுப்புதல்
+                  </h3>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #94a3b8)' }}>
+                    Send Official Email via Brevo Cloud SMTP
+                  </span>
+                </div>
+              </div>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowMailModal(false)}
+                disabled={mailSending}
+                style={{ padding: 6, color: 'var(--color-text-muted)' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Status Feedback Banner */}
+            {mailStatusMsg && (
+              <div
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  marginBottom: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  fontSize: '0.92rem',
+                  background: mailStatusMsg.type === 'success' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                  color: mailStatusMsg.type === 'success' ? '#10b981' : '#ef4444',
+                  border: `1px solid ${mailStatusMsg.type === 'success' ? '#10b981' : '#ef4444'}`,
+                }}
+              >
+                {mailStatusMsg.type === 'success' ? <Check size={18} /> : <AlertCircle size={18} />}
+                <span className="tamil-text" style={{ fontWeight: 600 }}>{mailStatusMsg.text}</span>
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleSendMail} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, marginBottom: 6, color: 'var(--color-text-primary, #f1f5f9)' }} className="tamil-text">
+                  பெறுநர் மின்னஞ்சல் (Recipient Email) *
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={mailRecipient}
+                  onChange={(e) => setMailRecipient(e.target.value)}
+                  placeholder="applicant@example.com"
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    fontSize: '0.95rem',
+                    backgroundColor: 'var(--color-surface-bg, #0f172a)',
+                    color: 'var(--color-text-primary, #f1f5f9)',
+                    border: '1px solid var(--color-surface-border, #334155)',
+                    borderRadius: 8,
+                    outline: 'none',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, marginBottom: 6, color: 'var(--color-text-primary, #f1f5f9)' }} className="tamil-text">
+                  மின்னஞ்சல் தலைப்பு (Subject) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={mailSubject}
+                  onChange={(e) => setMailSubject(e.target.value)}
+                  placeholder="மின்னஞ்சல் தலைப்பு..."
+                  className="tamil-text"
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    fontSize: '0.95rem',
+                    backgroundColor: 'var(--color-surface-bg, #0f172a)',
+                    color: 'var(--color-text-primary, #f1f5f9)',
+                    border: '1px solid var(--color-surface-border, #334155)',
+                    borderRadius: 8,
+                    outline: 'none',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, marginBottom: 6, color: 'var(--color-text-primary, #f1f5f9)' }} className="tamil-text">
+                  மின்னஞ்சல் உரை / வரைவு ஆணை (Body) *
+                </label>
+                <textarea
+                  required
+                  rows={8}
+                  value={mailBody}
+                  onChange={(e) => setMailBody(e.target.value)}
+                  className="tamil-text"
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    fontSize: '0.95rem',
+                    lineHeight: 1.6,
+                    resize: 'vertical',
+                    backgroundColor: 'var(--color-surface-bg, #0f172a)',
+                    color: 'var(--color-text-primary, #f1f5f9)',
+                    border: '1px solid var(--color-surface-border, #334155)',
+                    borderRadius: 8,
+                    outline: 'none',
+                  }}
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setShowMailModal(false)}
+                  disabled={mailSending}
+                  style={{ color: 'var(--color-text-secondary)' }}
+                >
+                  <span className="tamil-text">{t('common.cancel')}</span>
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={mailSending}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', fontSize: '0.95rem', fontWeight: 600 }}
+                >
+                  {mailSending ? (
+                    <>
+                      <div className="spinner" style={{ width: 16, height: 16 }} />
+                      <span className="tamil-text">அனுப்பப்படுகிறது...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send size={16} />
+                      <span className="tamil-text">{t('bulk.send_mail')}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

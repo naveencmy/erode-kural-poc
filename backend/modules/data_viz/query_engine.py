@@ -18,12 +18,12 @@ from modules.data_viz.insight_engine import generate_ai_insights
 logger = logging.getLogger("QueryEngine")
 
 INTENT_RULES = {
-    "summary": ["சுருக்கம்", "மொத்தம்", "எத்தனை", "count", "total", "sum", "சராசரி", "average", "கணக்கிடு", "விபரம்"],
+    "summary": ["சுருக்கம்", "மொத்தம்", "எத்தனை", "count", "total", "sum", "சராசரி", "average", "கணக்கிடு", "விபரம்", "explain", "graph", "chart", "விளக்கம்", "விளக்குக", "பகுப்பாய்வு", "அளவீடுகள்"],
     "trend": ["போக்கு", "trend", "காலப்போக்கில்", "over time", "வளர்ச்சி", "குறைவு", "ஆண்டுவாரியாக", "மாதவாரியாக"],
-    "comparison": ["ஒப்பிடு", "compare", "வித்தியாசம்", "difference", "எது அதிகம்", "ஒப்பீடு"],
-    "outlier": ["விதிவிலக்கு", "outlier", "விசித்திரமான", "unusual", "அதிகமான", "குறைவான", "முரண்பாடு"],
-    "distribution": ["பகிர்வு", "distribution", "விழுக்காடு", "percentage", "எத்தனை சதவீதம்", "விகிதம்"],
-    "ranking": ["முதல்", "top", "கடைசி", "bottom", "உயர்ந்த", "குறைந்த", "அதிகபட்ச", "குறைந்தபட்ச"]
+    "comparison": ["ஒப்பிடு", "compare", "வித்தியாசம்", "difference", "எது அதிகம்", "ஒப்பீடு", "அதிக"],
+    "outlier": ["விதிவிலக்கு", "outlier", "விசித்திரமான", "unusual", "முரண்பாடு", "iqr", "அசாதாரண"],
+    "distribution": ["பகிர்வு", "distribution", "விழுக்காடு", "percentage", "எத்தனை சதவீதம்", "விகிதம்", "பிரிவு"],
+    "ranking": ["முதல்", "top", "கடைசி", "bottom", "உயர்ந்த", "குறைந்த", "அதிகபட்ச", "குறைந்தபட்ச", "அதிக"]
 }
 
 
@@ -72,9 +72,21 @@ def build_deterministic_pandas_code(
     amount_col = next((c["column_name"] for c in columns_info if c.get("is_amount_column")), None)
     date_col = next((c["column_name"] for c in columns_info if c.get("is_date_column")), None)
     numeric_cols = [c["column_name"] for c in columns_info if c.get("data_type_detected") == "number"]
+    text_cols = [c["column_name"] for c in columns_info if c.get("data_type_detected") == "text" or c["column_name"] not in numeric_cols]
 
     # Target metric column (default to amount or first numeric)
     metric_col = amount_col or (numeric_cols[0] if numeric_cols else None)
+    category_col = taluk_col or dept_col or (text_cols[0] if text_cols else None)
+
+    # Dynamic Column Match from user question
+    matched_cols = [c for c in col_names if c in q or c.lower() in q.lower()]
+    matched_cat = [c for c in matched_cols if c in text_cols or c not in numeric_cols]
+    matched_num = [c for c in matched_cols if c in numeric_cols]
+
+    if matched_cat:
+        category_col = matched_cat[0]
+    if matched_num:
+        metric_col = matched_num[0]
 
     # Check for specific mentioned taluk in Erode
     mentioned_taluk = None
@@ -84,44 +96,23 @@ def build_deterministic_pandas_code(
             break
 
     # Scenario 1: Specific Taluk Filter (e.g. "ஈரோடு வட்டத்தில் நிலுவை வழக்குகள்")
-    if mentioned_taluk and taluk_col and metric_col:
-        code = f"result = df[df['{taluk_col}'].astype(str).str.contains('{mentioned_taluk}', na=False)]"
-        sql = f"SELECT * FROM dataset WHERE {taluk_col} LIKE '%{mentioned_taluk}%'"
+    if mentioned_taluk and category_col and metric_col:
+        code = f"result = df[df['{category_col}'].astype(str).str.contains('{mentioned_taluk}', na=False)]"
+        sql = f"SELECT * FROM dataset WHERE {category_col} LIKE '%{mentioned_taluk}%'"
         chart_type = "bar"
         return code, sql, chart_type
 
-    # Scenario 2: Comparison between taluks or departments
-    if intent == "comparison" and taluk_col and metric_col:
-        code = f"result = df.groupby('{taluk_col}')['{metric_col}'].sum().reset_index().sort_values(by='{metric_col}', ascending=False)"
-        sql = f"SELECT {taluk_col}, SUM({metric_col}) FROM dataset GROUP BY {taluk_col} ORDER BY SUM({metric_col}) DESC"
+    # Scenario 2: Comparison / Ranking between categories
+    if intent in ("comparison", "ranking", "distribution") and category_col and metric_col:
+        code = f"result = df.groupby('{category_col}')['{metric_col}'].sum().reset_index().sort_values(by='{metric_col}', ascending=False)"
+        sql = f"SELECT {category_col}, SUM({metric_col}) FROM dataset GROUP BY {category_col} ORDER BY SUM({metric_col}) DESC"
         chart_type = "bar"
         return code, sql, chart_type
 
-    # Scenario 3: Department-wise aggregate
-    if dept_col and ("துறை" in q or "department" in q.lower()) and metric_col:
-        code = f"result = df.groupby('{dept_col}')['{metric_col}'].sum().reset_index().sort_values(by='{metric_col}', ascending=False)"
-        sql = f"SELECT {dept_col}, SUM({metric_col}) FROM dataset GROUP BY {dept_col} ORDER BY SUM({metric_col}) DESC"
-        chart_type = "bar"
-        return code, sql, chart_type
-
-    # Scenario 4: Taluk-wise aggregate
-    if taluk_col and ("வட்டம்" in q or "taluk" in q.lower() or "தாலுகா" in q) and metric_col:
-        code = f"result = df.groupby('{taluk_col}')['{metric_col}'].sum().reset_index().sort_values(by='{metric_col}', ascending=False)"
-        sql = f"SELECT {taluk_col}, SUM({metric_col}) FROM dataset GROUP BY {taluk_col} ORDER BY SUM({metric_col}) DESC"
-        chart_type = "bar"
-        return code, sql, chart_type
-
-    # Scenario 5: Top N / Ranking
-    if intent == "ranking" and taluk_col and metric_col:
-        code = f"result = df.groupby('{taluk_col}')['{metric_col}'].sum().reset_index().sort_values(by='{metric_col}', ascending=False).head(5)"
-        sql = f"SELECT {taluk_col}, SUM({metric_col}) FROM dataset GROUP BY {taluk_col} ORDER BY SUM({metric_col}) DESC LIMIT 5"
-        chart_type = "horizontal_bar"
-        return code, sql, chart_type
-
-    # Scenario 6: Default general summary
-    if taluk_col and metric_col:
-        code = f"result = df.groupby('{taluk_col}')['{metric_col}'].sum().reset_index()"
-        sql = f"SELECT {taluk_col}, SUM({metric_col}) FROM dataset GROUP BY {taluk_col}"
+    # Scenario 3: Department / Taluk-wise aggregate
+    if category_col and metric_col:
+        code = f"result = df.groupby('{category_col}')['{metric_col}'].sum().reset_index().sort_values(by='{metric_col}', ascending=False)"
+        sql = f"SELECT {category_col}, SUM({metric_col}) FROM dataset GROUP BY {category_col} ORDER BY SUM({metric_col}) DESC"
         chart_type = "bar"
         return code, sql, chart_type
 
@@ -249,20 +240,27 @@ def execute_data_query(
     if result_df is not None and len(result_df) > 0:
         insights = generate_ai_insights(result_df, question, intent, dataset_name)
 
-    # Tamil Summary Generation
+    # Summary Generation (Grounded directly from analysis and insights)
     if result_df is not None and len(result_df) > 0:
         row_count = len(result_df)
         cols = list(result_df.columns)
-        if row_count == 1:
+        if insights and len(insights) > 0:
+            if lang == "en":
+                summary_en = insights[0].get("insight_english") or insights[0]["insight_tamil"]
+                summary_ta = insights[0]["insight_tamil"]
+            else:
+                summary_ta = insights[0]["insight_tamil"]
+                summary_en = insights[0].get("insight_english") or f"Analysis completed across {row_count} records."
+        elif row_count == 1:
             val_str = ", ".join(f"{k}: {v}" for k, v in result_df.iloc[0].items())
             summary_ta = f"வினவலுக்கான கணக்கீடு முடிவு: {val_str}."
             summary_en = f"Query calculation result: {val_str}."
         else:
-            summary_ta = f"வினவலுக்கு {row_count} பதிவுகள் பெறப்பட்டன (நெடுவரிசைகள்: {', '.join(cols[:3])})."
-            summary_en = f"Retrieved {row_count} records for query."
+            summary_ta = f"பகுப்பாய்வு முடிவு: {row_count} பதிவுகள் பெறப்பட்டன (நெடுவரிசைகள்: {', '.join(cols[:3])})."
+            summary_en = f"Retrieved {row_count} records for query ({', '.join(cols[:3])})."
     else:
         summary_ta = "பொருந்தும் தகவல்கள் ஏதும் கிடைக்கவில்லை."
-        summary_en = "No matching records found."
+        summary_en = "No matching records found in dataset."
 
     return {
         "execution_status": exec_result["status"],

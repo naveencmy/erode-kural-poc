@@ -64,15 +64,19 @@ function generateDynamicPrompts(schema, selectedCategoryCol, selectedMetricCol) 
     ];
   }
 
-  const catName = selectedCategoryCol || schema.taluk_column || schema.department_column || schema.columns.find(c => c.type === 'text')?.name || 'பிரிவு';
-  const numName = selectedMetricCol || schema.amount_column || schema.columns.find(c => c.type === 'number')?.name || 'மதிப்பு';
+  const cols = schema.columns || [];
+  const textCols = cols.filter((c) => c.data_type_detected === 'text' || c.is_taluk_column || c.is_department_column);
+  const numCols = cols.filter((c) => c.data_type_detected === 'number' || c.is_amount_column);
+
+  const catName = selectedCategoryCol || schema.taluk_column || schema.department_column || (textCols[0]?.column_name) || (cols[0]?.column_name) || 'வட்டம்';
+  const numName = selectedMetricCol || schema.amount_column || (numCols[0]?.column_name) || (cols[1]?.column_name) || 'மனுக்கள்';
 
   return [
     {
       id: 'highest',
       icon: '🏆',
       label: `எந்த ${catName} அதிக ${numName} கொண்டுள்ளது?`,
-      query: `எந்த ${catName} பிரிவில் அதிக ${numName} பதிவாகியுள்ளது? விரிவான விளக்கம் தருக.`,
+      query: `எந்த ${catName} பகுதியில் அதிக ${numName} பதிவாகியுள்ளது? விரிவான ஒப்பீட்டு விளக்கம் தருக.`,
     },
     {
       id: 'distribution',
@@ -322,17 +326,24 @@ export default function DataModule() {
   const postInitialInsightsToChat = (schema) => {
     if (!schema) return chatMessages;
     const cols = schema.columns || [];
-    const catCol = cols.find((c) => c.is_taluk_column || c.is_department_column || c.data_type_detected === 'text')?.column_name || 'Category';
-    const numCol = cols.find((c) => c.data_type_detected === 'number' || c.is_amount_column)?.column_name || 'Value';
+    const textCols = cols.filter((c) => c.data_type_detected === 'text' || c.is_taluk_column || c.is_department_column);
+    const numCols = cols.filter((c) => c.data_type_detected === 'number' || c.is_amount_column);
+
+    const catCol = textCols[0]?.column_name || schema.taluk_column || schema.department_column || 'வட்டம் / பிரிவு';
+    const numCol = numCols[0]?.column_name || schema.amount_column || 'மதிப்பு';
 
     const rowCount = (schema.row_count || 0).toLocaleString('ta-IN');
-    const colCount = schema.column_count || 0;
+    const colCount = schema.column_count || cols.length || 0;
 
-    const insightsText = `🤖 Initial Data Insights (${schema.file_name})\n\n` +
-      `• ${rowCount} records analyzed (${colCount} columns identified)\n` +
-      `• Primary metric analyzed: '${numCol}' grouped by '${catCol}'\n` +
-      `• Highest application volume concentrated in main administrative divisions\n` +
-      `• Potential statistical variation detected in top 15% numeric distribution`;
+    let insightsText = `🤖 Initial Data Insights (${schema.file_name})\n\n` +
+      `• ${rowCount} பதிவுகள் வெற்றிகரமாக பகுப்பாய்வு செய்யப்பட்டன (${colCount} நெடுவரிசைகள் அடையாளம் காணப்பட்டன)\n` +
+      `• முதன்மை அளவீடு: '${numCol}', பிரிவு: '${catCol}'\n`;
+
+    if (schema.summary_stats && Object.keys(schema.summary_stats).length > 0) {
+      insightsText += `• முக்கிய புள்ளியியல் மற்றும் ஒப்பீடுகள் தயாராக உள்ளன.`;
+    } else {
+      insightsText += `• வரைபடம் மற்றும் விரிவான பகுப்பாய்விற்கு கீழே உள்ள பரிந்துரை வினவல்களை கிளிக் செய்யலாம்.`;
+    }
 
     const insightMsg = {
       id: `insight-${Date.now()}`,
@@ -376,10 +387,37 @@ export default function DataModule() {
       let aiResponseText = '';
       if (selectedDatasetId) {
         const apiRes = await queryDataset(selectedDatasetId, fullQuery, officerId, 'both');
-        aiResponseText = apiRes.result_summary_tamil || apiRes.result_summary || 'தரவுத்தொகுப்பிலிருந்து பகுப்பாய்வு முடிவுகள் பெறப்பட்டன.';
+        const isEnglishQuery = apiRes.question_language === 'en' || !(/[\u0B80-\u0BFF]/.test(fullQuery));
 
-        if (apiRes.key_insights_tamil && apiRes.key_insights_tamil.length > 0) {
-          aiResponseText += `\n\n📌 முக்கிய குறிப்புகள்:\n• ` + apiRes.key_insights_tamil.join('\n• ');
+        const primarySummary = isEnglishQuery
+          ? (apiRes.result_summary_english || apiRes.result_summary_tamil || apiRes.result_summary)
+          : (apiRes.result_summary_tamil || apiRes.result_summary);
+
+        aiResponseText = primarySummary || (isEnglishQuery ? 'Analysis completed from dataset.' : 'தரவுத்தொகுப்பிலிருந்து பகுப்பாய்வு முடிவுகள் பெறப்பட்டன.');
+
+        // Extract grounded insights from insights array or key_insights_tamil array
+        const rawInsights = apiRes.insights || [];
+        const rawKeys = apiRes.key_insights_tamil || [];
+        const insightsList = [];
+
+        rawInsights.forEach((ins) => {
+          const txt = typeof ins === 'string'
+            ? ins
+            : (isEnglishQuery ? (ins.insight_english || ins.insight_tamil) : (ins.insight_tamil || ins.insight_text_tamil));
+          if (txt && !insightsList.includes(txt) && txt !== aiResponseText) {
+            insightsList.push(txt);
+          }
+        });
+
+        rawKeys.forEach((txt) => {
+          if (txt && !insightsList.includes(txt) && txt !== aiResponseText) {
+            insightsList.push(txt);
+          }
+        });
+
+        if (insightsList.length > 0) {
+          const header = isEnglishQuery ? '📌 Key Insights & Takeaways:' : '📌 முக்கிய குறிப்புகள் (Key Insights):';
+          aiResponseText += `\n\n${header}\n• ` + insightsList.join('\n• ');
         }
       } else {
         aiResponseText = 'தயவுசெய்து ஒரு தரவுத்தொகுப்பை (Excel/CSV) பதிவேற்றவும். பின்னர் பகுப்பாய்வு செய்து பதிலளிக்கிறேன்.';
@@ -1575,8 +1613,8 @@ export default function DataModule() {
                 <div style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: 1 }}>
                   Recommended Prompts
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {RECOMMENDED_PROMPTS.map((prompt) => (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {generateDynamicPrompts(datasetSchema).map((prompt) => (
                     <button
                       key={prompt.id}
                       onClick={() => handleSendChatMessage(prompt.query)}

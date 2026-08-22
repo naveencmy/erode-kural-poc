@@ -286,10 +286,12 @@ async def query_dataset_endpoint(req: QueryRequest):
     # 3. Save Child Grounded Insights (references query_id)
     saved_insights = []
     for ins in query_result.get("insights", []):
+        raw_type = ins.get("insight_type", "summary")
+        safe_type = raw_type if raw_type in ('trend', 'outlier', 'anomaly', 'comparison', 'summary') else 'summary'
         ins_id = save_data_insight(
             query_id=query_id,
             dataset_id=req.dataset_id,
-            insight_type=ins["insight_type"],
+            insight_type=safe_type,
             insight_text_tamil=ins["insight_tamil"],
             insight_text_english=ins.get("insight_english"),
             grounding_sql=query_result["generated_sql"],
@@ -332,6 +334,7 @@ async def query_dataset_endpoint(req: QueryRequest):
         "result_data": query_result["result_data"],
         "chart_url": chart_url,
         "insights": saved_insights,
+        "key_insights_tamil": [ins.get("insight_text_tamil") or ins.get("insight_tamil") for ins in saved_insights if ins.get("insight_text_tamil") or ins.get("insight_tamil")],
         "generated_code": query_result["generated_code"],
         "generated_sql": query_result["generated_sql"],
         "row_count_returned": query_result["row_count_returned"],
