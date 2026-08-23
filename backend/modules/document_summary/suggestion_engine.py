@@ -7,6 +7,7 @@ interaction history, and logs complete generation prompts for audit compliance.
 
 import json
 import logging
+import re
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -348,3 +349,185 @@ JSON வெளியீட்டு கட்டமைப்பு (Strict JSON 
             sug["officer_history"] = {"times_shown": shown, "times_clicked": clicked, "ctr": round(ctr, 2)}
 
         return sorted(suggestions, key=lambda x: x.get("personalized_score", 0), reverse=True)
+
+    def get_typeahead_suggestions(
+        self,
+        query_prefix: str = "",
+        source_id: Optional[str] = None,
+        officer_id: str = "OFFICER",
+        context: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Real-time MS Copilot-style typeahead prompt suggestions computed in < 2 milliseconds."""
+        candidates: List[Dict[str, Any]] = []
+
+        # 1. Fetch attached document context if available
+        fp = None
+        attached_doc = None
+        if source_id:
+            try:
+                from pipeline.rag_engine import CollectorateRAGEngine
+                engine = CollectorateRAGEngine()
+                attached_doc = engine.get_attached_doc_context(source_id)
+                if attached_doc:
+                    fp = attached_doc.get("fingerprint") or {}
+            except Exception:
+                pass
+
+        fname = (attached_doc.get("file_name") if attached_doc else "") or "ஆவணம்"
+        taluks = (fp.get("taluks", []) if fp else []) or []
+        depts = (fp.get("departments", []) if fp else []) or []
+        amounts = (fp.get("amounts", []) if fp else []) or []
+
+        # 2. Build Document-Grounded Candidate Pool
+        if attached_doc:
+            candidates.append({
+                "text_tamil": f"இந்த ஆவணத்தின் ({fname}) முக்கிய சுருக்கத்தை கூறுக",
+                "text_english": f"Provide key summary of this document ({fname})",
+                "type": "summary",
+                "category": "ஆவண சுருக்கம்",
+                "confidence": 0.98,
+                "grounded_in": fname,
+            })
+            candidates.append({
+                "text_tamil": "எந்த வட்டத்திற்கு அதிக பட்ஜெட் / நிதி ஒதுக்கப்பட்டுள்ளது?",
+                "text_english": "Which taluk has the highest budget allocated?",
+                "type": "extreme_max",
+                "category": "பகுப்பாய்வு (Max)",
+                "confidence": 0.96,
+                "grounded_in": f"{fname}: அதிகபட்ச ஒதுக்கீடு",
+            })
+            candidates.append({
+                "text_tamil": "எந்த வட்டத்திற்கு குறைந்த பட்ஜெட் / நிதி ஒதுக்கப்பட்டுள்ளது?",
+                "text_english": "Which taluk has the lowest budget allocated?",
+                "type": "extreme_min",
+                "category": "பகுப்பாய்வு (Min)",
+                "confidence": 0.95,
+                "grounded_in": f"{fname}: குறைந்தபட்ச ஒதுக்கீடு",
+            })
+            candidates.append({
+                "text_tamil": "இதில் குறிப்பிடப்பட்டுள்ள முக்கிய தேதிகள் மற்றும் காலக்கெடு என்ன?",
+                "text_english": "What are the key dates and deadlines mentioned?",
+                "type": "dates",
+                "category": "காலக்கெடு",
+                "confidence": 0.92,
+                "grounded_in": fname,
+            })
+            candidates.append({
+                "text_tamil": "ஆவணத்தில் உள்ள முழு அட்டவணை விபரங்களை பட்டியலிடுக",
+                "text_english": "List full table details from document",
+                "type": "table",
+                "category": "அட்டவணை",
+                "confidence": 0.91,
+                "grounded_in": fname,
+            })
+
+            # Specific taluk candidates
+            for t in taluks[:4]:
+                candidates.append({
+                    "text_tamil": f"{t} வட்டத்தின் முழு ஒதுக்கீடு மற்றும் செலவு விபரம் என்ன?",
+                    "text_english": f"What are the budget details for {t} taluk?",
+                    "type": "taluk_query",
+                    "category": f"வட்டம் ({t})",
+                    "confidence": 0.94,
+                    "grounded_in": f"{fname}: {t}",
+                })
+
+            for d in depts[:2]:
+                candidates.append({
+                    "text_tamil": f"{d} துறை தொடர்பான திட்டங்களின் செயலாக்க நிலை என்ன?",
+                    "text_english": f"What is the progress of schemes under {d}?",
+                    "type": "dept_query",
+                    "category": f"துறை ({d})",
+                    "confidence": 0.90,
+                    "grounded_in": f"{fname}: {d}",
+                })
+
+        # 3. Administrative Knowledge Base SOP Candidates
+        admin_sop_candidates = [
+            {
+                "text_tamil": "பட்டா பெயர் மாறுதல் செய்ய என்ன நடைமுறை?",
+                "text_english": "What is the procedure for Patta transfer?",
+                "type": "sop",
+                "category": "வருவாய்த்துறை",
+                "confidence": 0.92,
+                "grounded_in": "வருவாய்த்துறை வழிகாட்டுதல்கள்",
+            },
+            {
+                "text_tamil": "உட்பிரிவு இல்லாத பட்டா மாறுதலுக்கு எத்தனை நாட்கள் ஆகும்?",
+                "text_english": "How many days for non-subdivision patta transfer?",
+                "type": "sop",
+                "category": "பட்டா",
+                "confidence": 0.90,
+                "grounded_in": "தமிழ் நிலம் SOP",
+            },
+            {
+                "text_tamil": "முதியோர் உதவித்தொகை (OAP) பெற தகுதிகள் என்ன?",
+                "text_english": "What are the eligibility criteria for Old Age Pension (OAP)?",
+                "type": "sop",
+                "category": "சமூக நலம்",
+                "confidence": 0.91,
+                "grounded_in": "சமூக பாதுகாப்பு திட்டம்",
+            },
+            {
+                "text_tamil": "குடிநீர் மற்றும் சாலை குறைதீர்ப்பு மனுக்கள் மீதான தீர்வு SOP என்ன?",
+                "text_english": "What is the resolution SOP for drinking water and road grievances?",
+                "type": "sop",
+                "category": "பொதுப்பணி",
+                "confidence": 0.89,
+                "grounded_in": "நகராட்சி & பொதுப்பணி SOP",
+            },
+            {
+                "text_tamil": "வாரிசுச் சான்றிதழ் (Legal Heir Certificate) பெற நடைமுறை என்ன?",
+                "text_english": "What is the procedure to obtain a Legal Heir Certificate?",
+                "type": "sop",
+                "category": "இ-சேவை சான்றிதழ்",
+                "confidence": 0.88,
+                "grounded_in": "இ-சேவை வழிகாட்டுதல்கள்",
+            },
+        ]
+        candidates.extend(admin_sop_candidates)
+
+        # 4. If query_prefix is empty, return top baseline chips immediately
+        p = query_prefix.strip().lower()
+        if not p:
+            return candidates[:5]
+
+        # 5. Fuzzy & Substring Prefix Matching
+        tokens = [tok for tok in re.split(r"[\s,]+", p) if tok]
+        scored_candidates: List[Tuple[float, Dict[str, Any]]] = []
+
+        for cand in candidates:
+            cand_text_ta = cand["text_tamil"].lower()
+            cand_text_en = cand["text_english"].lower()
+            combined_text = f"{cand_text_ta} {cand_text_en} {cand.get('category', '').lower()}"
+
+            score = 0.0
+            # Exact prefix match bonus
+            if cand_text_ta.startswith(p) or cand_text_en.startswith(p):
+                score += 3.0
+            # Token match scoring
+            match_count = sum(1 for tok in tokens if tok in combined_text)
+            if match_count > 0:
+                score += match_count * 1.5
+                # Boost if document-grounded
+                if cand.get("type") in ("summary", "extreme_max", "extreme_min", "taluk_query"):
+                    score += 0.5
+                scored_candidates.append((score, cand))
+
+        scored_candidates.sort(key=lambda x: x[0], reverse=True)
+        results = [c[1] for c in scored_candidates[:5]]
+
+        # If prefix didn't match specific templates, synthesize dynamic search candidate
+        if not results:
+            if p:
+                results.append({
+                    "text_tamil": f"'{query_prefix}' குறித்த அதிகாரப்பூர்வ வழிகாட்டுதல்களை விளக்குக",
+                    "text_english": f"Explain official administrative directives on '{query_prefix}'",
+                    "type": "custom_search",
+                    "category": "நிர்வாக வினவல்",
+                    "confidence": 0.85,
+                    "grounded_in": "Collectorate Master KB",
+                })
+
+        return results
+

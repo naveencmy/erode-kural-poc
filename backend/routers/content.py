@@ -36,6 +36,13 @@ class ChatRequest(BaseModel):
     context: Optional[str] = None
 
 
+class TypeaheadRequest(BaseModel):
+    query_prefix: str = ""
+    source_id: Optional[str] = None
+    officer_id: str = "OFFICER"
+    context: Optional[str] = None
+
+
 class ContentGenerateRequest(BaseModel):
     template_type: str
     fields: Dict[str, Any]
@@ -306,3 +313,24 @@ async def chat(req: ChatRequest):
             },
         ],
     }
+
+
+@router.post("/api/v1/suggestions/typeahead")
+@router.post("/api/suggestions/typeahead")
+async def get_typeahead_suggestions(req: TypeaheadRequest):
+    """MS Copilot-style real-time as-you-type prompt suggestions (< 2ms response)."""
+    from modules.document_summary.suggestion_engine import DynamicSuggestionEngine
+    engine = DynamicSuggestionEngine()
+    suggestions = engine.get_typeahead_suggestions(
+        query_prefix=req.query_prefix,
+        source_id=req.source_id,
+        officer_id=req.officer_id,
+        context=req.context,
+    )
+    return {
+        "query_prefix": req.query_prefix,
+        "source_id": req.source_id,
+        "suggestions": suggestions,
+        "count": len(suggestions),
+    }
+

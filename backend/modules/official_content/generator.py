@@ -628,12 +628,12 @@ def _get_active_ollama_model() -> str:
             tags = resp.json().get("models", [])
             installed_names = [m.get("name") for m in tags if m.get("name")]
             preferred = [
+                config.OLLAMA_MODEL,
+                "qwen2.5:3b",
                 "qwen2.5:7b-instruct-q4_K_M",
                 "qwen2.5:7b",
                 "qwen2.5:latest",
-                config.OLLAMA_MODEL,
                 "qwen2.5",
-                "qwen2.5:3b",
                 "qwen2.5:1.5b",
                 "mistral:7b-instruct-q4_K_M",
                 "phi4-mini:latest",
@@ -662,10 +662,12 @@ def _try_ollama(prompt: str) -> Optional[str]:
                 "model": model_name,
                 "prompt": prompt,
                 "stream": False,
+                "keep_alive": "15m",
                 "options": {
                     "temperature": 0.3,
                     "top_p": 0.9,
-                    "num_predict": 1024,
+                    "num_predict": 350,
+                    "num_ctx": 2048,
                 },
             },
             timeout=config.OLLAMA_TIMEOUT_SEC,

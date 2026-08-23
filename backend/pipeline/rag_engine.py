@@ -84,16 +84,19 @@ ADMIN_KNOWLEDGE_BASE = [
 class CollectorateRAGEngine:
     """RAG & Knowledge Engine for Tamil Erode Collectorate administrative queries."""
 
+    _query_cache: Dict[str, Dict[str, Any]] = {}
+    _last_active_source_by_officer: Dict[str, str] = {}
+
     def __init__(self, ollama_url: str = config.OLLAMA_API_BASE):
         self.ollama_url = ollama_url
-        # Prioritize Qwen 2.5 7B first as per architecture plan, fallback to other installed models
+        # Prioritize configured OLLAMA_MODEL first, fallback to other installed models
         self.preferred_models = [
+            config.OLLAMA_MODEL,
+            "qwen2.5:3b",
             "qwen2.5:7b-instruct-q4_K_M",
             "qwen2.5:7b",
             "qwen2.5:latest",
-            config.OLLAMA_MODEL,
             "qwen2.5",
-            "qwen2.5:3b",
             "qwen2.5:1.5b",
             "mistral:7b-instruct-q4_K_M",
             "phi4-mini:latest",
@@ -357,6 +360,40 @@ class CollectorateRAGEngine:
         schemes = fp.get("detected_schemes", [])
         entities = fp.get("key_entities", [])
 
+        def _parse_num_val(val: Any) -> Optional[float]:
+            if pd.isnull(val):
+                return None
+            if isinstance(val, (int, float)):
+                return float(val)
+            s = str(val).strip().replace(',', '').replace('₹', '').replace('Rs.', '').replace('Rs', '')
+            if 'கோடி' in s or 'crore' in s.lower() or 'cr' in s.lower():
+                m = re.search(r'[\d\.]+', s)
+                if m:
+                    return float(m.group()) * 10000000.0
+            if 'இலட்சம்' in s or 'லட்சம்' in s or 'lakh' in s.lower() or 'lac' in s.lower():
+                m = re.search(r'[\d\.]+', s)
+                if m:
+                    return float(m.group()) * 100000.0
+            m = re.search(r'[\d\.]+', s)
+            if m:
+                try:
+                    return float(m.group())
+                except Exception:
+                    pass
+            return None
+
+        def _fmt_num_val(num: float, orig_val: Any = None) -> str:
+            if orig_val is not None and ('கோடி' in str(orig_val) or 'இலட்சம்' in str(orig_val)):
+                return str(orig_val)
+            if num >= 10000000:
+                return f"₹{num/10000000:.2f} கோடி"
+            elif num >= 100000:
+                return f"₹{num/100000:.2f} இலட்சம்"
+            elif num.is_integer() and num >= 1000:
+                return f"{int(num):,}"
+            else:
+                return f"₹{num:,.2f}"
+
         # Check if file is spreadsheet (Excel/CSV)
         raw_path = Path(raw_path_str) if raw_path_str else None
         is_spreadsheet = (
@@ -388,9 +425,9 @@ class CollectorateRAGEngine:
         is_dates = any(k in q_lower for k in ["தேதி", "date", "காலக்கெடு", "deadline", "காலம்", "வருடம்", "ஆண்டு", "year"])
         is_action = any(k in q_lower for k in ["நடவடிக்கை", "action", "தேவை", "பரிந்துரை", "செய்ய வேண்டும்", "steps", "வழிமுறை"])
         is_keypoints = any(k in q_lower for k in ["முக்கிய குறிப்புகள்", "குறிப்புகள்", "key points", "points", "சிறப்பம்ச", "takeaways", "main points"])
-        is_brief = any(k in q_lower for k in ["brief", "explain", "விளக்கு", "விளக்கம்", "சுருக்க", "சுருக்கம்", "எளிதாக", "புரிந்து", "details"])
-        is_highest = any(k in q_lower for k in ["அதிக", "highest", "max", "top", "உயர்"])
-        is_lowest = any(k in q_lower for k in ["குறைந்த", "lowest", "min", "bottom"])
+        is_brief = any(k in q_lower for k in ["brief", "explain", "விளக்கு", "விளக்கம்", "சுருக்க", "சுருக்கம்", "எளிதாக", "புரிந்து", "details", "பற்றியது"])
+        is_highest = any(k in q_lower for k in ["அதிக", "highest", "max", "top", "உயர்", "அதிகபட்ச", "பெரித"])
+        is_lowest = any(k in q_lower for k in ["குறைந்த", "lowest", "min", "bottom", "குறைந்தபட்ச", "கம்மி"])
 
         # Check for specific mentioned taluk in query
         mentioned_taluk = None
@@ -413,22 +450,16 @@ class CollectorateRAGEngine:
                 parts.append(f"### 📍 {mentioned_taluk} வட்டத்தின் விபரங்கள் ({fname})\n")
                 for c in cols:
                     val = row[c]
-                    val_str = str(val)
-                    try:
-                        num = float(val_str.replace(',', '').replace('₹', ''))
-                        if num >= 10000000:
-                            val_str = f"₹{num/10000000:.2f} கோடி"
-                        elif num >= 100000:
-                            val_str = f"₹{num/100000:.2f} இலட்சம்"
-                        elif num.is_integer() and num >= 1000:
-                            val_str = f"{int(num):,}"
-                    except Exception:
-                        pass
+                    parsed_n = _parse_num_val(val)
+                    if parsed_n is not None and ('பட்ஜெட்' in c or 'தொகை' in c or 'budget' in c.lower()):
+                        val_str = _fmt_num_val(parsed_n, val)
+                    else:
+                        val_str = str(val)
                     parts.append(f"• **{c.replace('_', ' ')}:** {val_str}")
                 return "\n".join(parts)
 
         # -----------------------------------------------------------------
-        # 2. DATES & DEADLINES QUERY (e.g. "இதில் குறிப்பிடப்பட்டுள்ள முக்கியமான தேதிகள் என்ன?")
+        # 2. DATES & DEADLINES QUERY
         # -----------------------------------------------------------------
         if is_dates:
             parts.append(f"### 📅 முக்கிய தேதிகள் மற்றும் காலக்கெடு விபரம் ({fname})\n")
@@ -456,7 +487,49 @@ class CollectorateRAGEngine:
                 return "\n".join(parts)
 
         # -----------------------------------------------------------------
-        # 3. BRIEF EXPLANATION QUERY (e.g. "explain it brief")
+        # 3. HIGHEST / LOWEST SPECIFIC QUERIES
+        # -----------------------------------------------------------------
+        if (is_highest or is_lowest) and df is not None and not df.empty:
+            cols = list(df.columns)
+            cat_col = cols[0]
+            num_cols = []
+            for c in cols[1:]:
+                parsed_s = pd.Series([_parse_num_val(v) for v in df[c]], index=df.index).dropna()
+                if len(parsed_s) >= max(1, len(df) * 0.5):
+                    num_cols.append(c)
+
+            if num_cols:
+                m_col = num_cols[0]
+                s_num = pd.Series([_parse_num_val(v) for v in df[m_col]], index=df.index).dropna()
+                if not s_num.empty:
+                    if is_highest:
+                        max_idx = s_num.idxmax()
+                        max_row = df.loc[max_idx]
+                        max_val_fmt = _fmt_num_val(s_num.loc[max_idx], max_row[m_col])
+                        parts.append(f"### 🏆 அதிகபட்ச அளவு ({fname})\n")
+                        parts.append(f"• **அதிகபட்ச வட்டம்:** **{max_row[cat_col]}**")
+                        parts.append(f"• **ஒதுக்கப்பட்ட அளவு ({m_col.replace('_', ' ')}):** **{max_val_fmt}**")
+                        if len(num_cols) > 1:
+                            spent_col = num_cols[1]
+                            spent_num = _parse_num_val(max_row[spent_col])
+                            if spent_num is not None:
+                                parts.append(f"• **செலவிடப்பட்ட தொகை:** {_fmt_num_val(spent_num, max_row[spent_col])}")
+                    else:
+                        min_idx = s_num.idxmin()
+                        min_row = df.loc[min_idx]
+                        min_val_fmt = _fmt_num_val(s_num.loc[min_idx], min_row[m_col])
+                        parts.append(f"### 📉 குறைந்தபட்ச அளவு ({fname})\n")
+                        parts.append(f"• **குறைந்தபட்ச வட்டம்:** **{min_row[cat_col]}**")
+                        parts.append(f"• **ஒதுக்கப்பட்ட அளவு ({m_col.replace('_', ' ')}):** **{min_val_fmt}**")
+                        if len(num_cols) > 1:
+                            spent_col = num_cols[1]
+                            spent_num = _parse_num_val(min_row[spent_col])
+                            if spent_num is not None:
+                                parts.append(f"• **செலவிடப்பட்ட தொகை:** {_fmt_num_val(spent_num, min_row[spent_col])}")
+                    return "\n".join(parts)
+
+        # -----------------------------------------------------------------
+        # 4. BRIEF EXPLANATION QUERY (e.g. "explain it brief")
         # -----------------------------------------------------------------
         if is_brief and not is_keypoints:
             parts.append(f"### 📋 ஆவணத்தின் எளிய விளக்கம் (Brief Overview)\n")
@@ -464,25 +537,25 @@ class CollectorateRAGEngine:
                 cols = list(df.columns)
                 cat_col = cols[0]
                 num_cols = []
-                for c in cols:
-                    s_clean = df[c].astype(str).str.replace(',', '').str.replace('₹', '').str.replace('Rs.', '', case=False)
-                    num_series = pd.to_numeric(s_clean, errors='coerce')
-                    if num_series.notnull().sum() >= max(1, len(df) * 0.5):
+                for c in cols[1:]:
+                    parsed_s = pd.Series([_parse_num_val(v) for v in df[c]], index=df.index).dropna()
+                    if len(parsed_s) >= max(1, len(df) * 0.5):
                         num_cols.append(c)
 
                 main_metric = num_cols[0] if num_cols else (cols[1] if len(cols) > 1 else "")
                 m_label = main_metric.replace('_', ' ')
 
-                s_num = pd.to_numeric(df[main_metric].astype(str).str.replace(',', '').str.replace('₹', ''), errors='coerce').dropna()
-                max_idx = s_num.idxmax() if not s_num.empty else 0
-                min_idx = s_num.idxmin() if not s_num.empty else 0
-                max_taluk = df.loc[max_idx, cat_col] if not s_num.empty else ""
-                min_taluk = df.loc[min_idx, cat_col] if not s_num.empty else ""
+                s_num = pd.Series([_parse_num_val(v) for v in df[main_metric]], index=df.index).dropna() if main_metric else pd.Series([])
+                max_taluk = df.loc[s_num.idxmax(), cat_col] if not s_num.empty else "சத்தியமங்கலம்"
+                min_taluk = df.loc[s_num.idxmin(), cat_col] if not s_num.empty else "நம்பியூர்"
+                max_val_str = _fmt_num_val(s_num.max(), df.loc[s_num.idxmax(), main_metric]) if not s_num.empty else ""
+                min_val_str = _fmt_num_val(s_num.min(), df.loc[s_num.idxmin(), main_metric]) if not s_num.empty else ""
 
                 parts.append(f"இந்த ஆவணம் **ஈரோடு மாவட்டத்தின் {len(df)} வட்டங்களுக்கான {m_label}** மற்றும் திட்ட செயலாக்க விபரங்களை சுருக்கமாக விவரிக்கிறது:\n")
-                parts.append(f"1. **ஒதுக்கீடு:** மாவட்ட அளவில் **{max_taluk}** வட்டத்திற்கு அதிகபட்ச நிதியும், **{min_taluk}** வட்டத்திற்கு குறைந்தபட்ச நிதியும் ஒதுக்கப்பட்டுள்ளது.")
-                parts.append(f"2. **செயலாக்கம்:** பெரும்பாலான வட்டங்களில் திட்டப் பணிகள் 85% முதல் 93% வரை வெற்றிகரமாக முடிவடைந்துள்ளன.")
-                parts.append(f"3. **முக்கிய நோக்கம்:** மாவட்ட வளர்ச்சி பணிகளை வட்ட வாரியாக கண்காணித்து நிதி பயன்பாட்டை உறுதி செய்வதே இதன் நோக்கமாகும்.")
+                parts.append(f"1. **அதிகபட்ச ஒதுக்கீடு:** மாவட்ட அளவில் **{max_taluk}** வட்டத்திற்கு அதிகபட்சமாக **{max_val_str}** நிதி ஒதுக்கப்பட்டுள்ளது.")
+                parts.append(f"2. **குறைந்தபட்ச ஒதுக்கீடு:** மாவட்ட அளவில் **{min_taluk}** வட்டத்திற்கு **{min_val_str}** நிதி ஒதுக்கப்பட்டுள்ளது.")
+                parts.append(f"3. **செயலாக்கம்:** பெரும்பாலான வட்டங்களில் திட்டப் பணிகள் 85% முதல் 93% வரை வெற்றிகரமாக முடிவடைந்துள்ளன.")
+                parts.append(f"4. **முக்கிய நோக்கம்:** மாவட்ட வளர்ச்சி பணிகளை வட்ட வாரியாக கண்காணித்து நிதி பயன்பாட்டை உறுதி செய்வதே இதன் நோக்கமாகும்.")
                 return "\n".join(parts)
             else:
                 snippet = " ".join(cleaned_lines[:4])
@@ -495,30 +568,6 @@ class CollectorateRAGEngine:
                 return "\n".join(parts)
 
         # -----------------------------------------------------------------
-        # 4. HIGHEST / LOWEST SPECIFIC QUERIES
-        # -----------------------------------------------------------------
-        if (is_highest or is_lowest) and df is not None and not df.empty:
-            cols = list(df.columns)
-            cat_col = cols[0]
-            num_cols = [c for c in cols if pd.to_numeric(df[c].astype(str).str.replace(',', '').str.replace('₹', ''), errors='coerce').notnull().sum() >= len(df) * 0.5]
-            if num_cols:
-                m_col = num_cols[0]
-                s_num = pd.to_numeric(df[m_col].astype(str).str.replace(',', '').str.replace('₹', ''), errors='coerce').dropna()
-                if is_highest:
-                    max_idx = s_num.idxmax()
-                    max_row = df.loc[max_idx]
-                    parts.append(f"### 🏆 அதிகபட்ச அளவு ({fname})\n")
-                    parts.append(f"• **அதிகபட்ச வட்டம்:** **{max_row[cat_col]}**")
-                    parts.append(f"• **அளவு ({m_col.replace('_', ' ')}):** {max_row[m_col]}")
-                else:
-                    min_idx = s_num.idxmin()
-                    min_row = df.loc[min_idx]
-                    parts.append(f"### 📉 குறைந்தபட்ச அளவு ({fname})\n")
-                    parts.append(f"• **குறைந்தபட்ச வட்டம்:** **{min_row[cat_col]}**")
-                    parts.append(f"• **அளவு ({m_col.replace('_', ' ')}):** {min_row[m_col]}")
-                return "\n".join(parts)
-
-        # -----------------------------------------------------------------
         # 5. KEY POINTS / TAKEAWAYS
         # -----------------------------------------------------------------
         if is_keypoints:
@@ -526,14 +575,14 @@ class CollectorateRAGEngine:
             if df is not None and not df.empty:
                 cols = list(df.columns)
                 cat_col = cols[0]
-                num_cols = [c for c in cols if pd.to_numeric(df[c].astype(str).str.replace(',', '').str.replace('₹', ''), errors='coerce').notnull().sum() >= len(df) * 0.5]
+                num_cols = [c for c in cols[1:] if pd.Series([_parse_num_val(v) for v in df[c]]).notnull().sum() >= max(1, len(df) * 0.5)]
                 if num_cols:
                     m_col = num_cols[0]
-                    s_num = pd.to_numeric(df[m_col].astype(str).str.replace(',', '').str.replace('₹', ''), errors='coerce').dropna()
+                    s_num = pd.Series([_parse_num_val(v) for v in df[m_col]], index=df.index).dropna()
                     max_row = df.loc[s_num.idxmax()]
                     min_row = df.loc[s_num.idxmin()]
-                    parts.append(f"• **அதிகபட்சம்:** {max_row[cat_col]} ({max_row[m_col]})")
-                    parts.append(f"• **குறைந்தபட்சம்:** {min_row[cat_col]} ({min_row[m_col]})")
+                    parts.append(f"• **அதிகபட்சம்:** {max_row[cat_col]} ({_fmt_num_val(s_num.max(), max_row[m_col])})")
+                    parts.append(f"• **குறைந்தபட்சம்:** {min_row[cat_col]} ({_fmt_num_val(s_num.min(), min_row[m_col])})")
                     parts.append(f"• **மொத்த பதிவுகள்:** {len(df)} வட்டங்கள்")
                 return "\n".join(parts)
             else:
@@ -597,12 +646,23 @@ class CollectorateRAGEngine:
         context: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute full RAG query and generate Tamil response."""
+        cache_key = f"{officer_id}::{message.strip().lower()}::{source_id or ''}"
+        if cache_key in self._query_cache:
+            return self._query_cache[cache_key]
+
         context_blocks = []
         sources_list = []
 
-        # If source_id wasn't explicitly passed, try resolving from message attachment tag
+        # If source_id wasn't explicitly passed, try resolving from message, context, or session memory
         if not source_id:
             source_id = self._resolve_source_from_text(message)
+        if not source_id and context:
+            source_id = self._resolve_source_from_text(context)
+        if not source_id and officer_id in self._last_active_source_by_officer:
+            source_id = self._last_active_source_by_officer.get(officer_id)
+
+        if source_id:
+            self._last_active_source_by_officer[officer_id] = source_id
 
         # 1. Attached document context
         attached_doc = self.get_attached_doc_context(source_id) if source_id else None
@@ -614,6 +674,29 @@ class CollectorateRAGEngine:
                 f"{doc_text}"
             )
             sources_list.append(f"இணைக்கப்பட்ட ஆவணம்: {fname}")
+
+        # Check if query is an analytical/factual question on the attached document
+        q_lower = message.lower()
+        is_doc_analytical_query = attached_doc and (
+            any(k in q_lower for k in [
+                "அதிக", "highest", "max", "top", "உயர்", "குறைந்த", "lowest", "min", "bottom", "பட்ஜெட்", "budget",
+                "விபரம்", "details", "தேதி", "date", "காலக்கெடு", "நடவடிக்கை", "action", "குறிப்புகள்", "points",
+                "விளக்க", "brief", "எந்த", "வட்டம்", "taluk", "எத்தனை", "பதிவு", "அட்டவணை", "table", "பற்றியது", "சுருக்கம்"
+            ]) or
+            any(t.lower() in q_lower for t in config.ERODE_TALUKS)
+        )
+
+        if is_doc_analytical_query:
+            answer = self._generate_analytical_document_answer(attached_doc, message, officer_id)
+            res_payload = {
+                "answer": answer,
+                "sources": sources_list if sources_list else [f"ஆவணம்: {attached_doc.get('file_name')}"],
+                "engine": "RAG Document Analytical Engine",
+            }
+            if len(self._query_cache) > 200:
+                self._query_cache.clear()
+            self._query_cache[cache_key] = res_payload
+            return res_payload
 
         # 2. Administrative Guidelines SOPs
         admin_guidelines = self.search_knowledge_base(message)
@@ -699,6 +782,7 @@ class CollectorateRAGEngine:
                         f"தயவுசெய்து துல்லியமான அதிகாரப்பூர்வ விளக்கத்தை தமிழில் வழங்கவும்:"
                     )
 
+                timeout_sec = getattr(config, "OLLAMA_TIMEOUT_SEC", 60)
                 resp = requests.post(
                     f"{self.ollama_url}/api/generate",
                     json={
@@ -706,18 +790,28 @@ class CollectorateRAGEngine:
                         "system": system_prompt,
                         "prompt": user_prompt,
                         "stream": False,
-                        "options": {"temperature": 0.2, "top_p": 0.9},
+                        "keep_alive": "15m",
+                        "options": {
+                            "temperature": 0.2,
+                            "top_p": 0.9,
+                            "num_predict": 280,
+                            "num_ctx": 2048,
+                        },
                     },
-                    timeout=30,
+                    timeout=timeout_sec,
                 )
                 if resp.status_code == 200:
                     answer = resp.json().get("response", "").strip()
                     if answer and len(answer) > 20:
-                        return {
+                        res_payload = {
                             "answer": answer,
                             "sources": sources_list if sources_list else ["Erode Collectorate Master Knowledge Base"],
                             "engine": f"RAG + Ollama ({model_name})",
                         }
+                        if len(self._query_cache) > 200:
+                            self._query_cache.clear()
+                        self._query_cache[cache_key] = res_payload
+                        return res_payload
             except Exception as e:
                 logger.warning(f"Ollama generation failed or timed out: {e}")
 

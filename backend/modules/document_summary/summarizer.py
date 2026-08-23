@@ -328,7 +328,7 @@ JSON வெளியீட்டு கட்டமைப்பு:
             r_tags = requests.get(f"{self.ollama_url}/api/tags", timeout=1.5)
             if r_tags.status_code == 200:
                 inst = [m.get("name") for m in r_tags.json().get("models", []) if m.get("name")]
-                pref = ["qwen2.5:7b-instruct-q4_K_M", "qwen2.5:7b", "qwen2.5:latest", config.OLLAMA_MODEL, "qwen2.5", "mistral:7b-instruct-q4_K_M", "phi4-mini:latest", "llama3.2:1b"]
+                pref = [config.OLLAMA_MODEL, "qwen2.5:3b", "qwen2.5:7b-instruct-q4_K_M", "qwen2.5:7b", "qwen2.5:latest", "qwen2.5", "mistral:7b-instruct-q4_K_M", "phi4-mini:latest", "llama3.2:1b"]
                 for p in pref:
                     if p in inst:
                         active_model = p

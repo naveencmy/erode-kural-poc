@@ -104,9 +104,14 @@ JSON வடிவம்:
                     "prompt": prompt,
                     "stream": False,
                     "format": "json",
-                    "options": {"temperature": 0.1, "num_predict": 100},
+                    "keep_alive": "15m",
+                    "options": {
+                        "temperature": 0.1,
+                        "num_predict": 80,
+                        "num_ctx": 1024,
+                    },
                 },
-                timeout=self.ollama_timeout,
+                timeout=min(self.ollama_timeout, 8),
             )
             if resp.status_code == 200:
                 data = resp.json()

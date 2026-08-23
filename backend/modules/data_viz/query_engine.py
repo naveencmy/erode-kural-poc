@@ -131,7 +131,7 @@ def generate_llm_pandas_code(
     Call Ollama Qwen 2.5 7B using the prompt template from Section 15.
     """
     columns_str = ", ".join(c["column_name"] for c in columns_info)
-    types_str = ", ".join(f"{c['column_name']}: {c['data_type_detected']}" for c in columns_info)
+    types_str = ", ".join(f"{c['column_name']}: {c.get('data_type_detected') or c.get('data_type', 'object')}" for c in columns_info)
     samples_str = json.dumps({c["column_name"]: c.get("sample_values", [])[:3] for c in columns_info}, ensure_ascii=False)
 
     prompt = f"""நீ ஒரு தமிழ்நாடு அரசு தரவு பகுப்பாய்வு உதவியாளர்.
@@ -169,7 +169,12 @@ def generate_llm_pandas_code(
             "prompt": prompt,
             "stream": False,
             "format": "json",
-            "options": {"temperature": 0.1, "num_predict": 400},
+            "keep_alive": "15m",
+            "options": {
+                "temperature": 0.1,
+                "num_predict": 180,
+                "num_ctx": 2048,
+            },
         }
         resp = requests.post(url, json=payload, timeout=min(config.OLLAMA_TIMEOUT_SEC, 12))
         if resp.status_code == 200:
