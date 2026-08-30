@@ -6,7 +6,7 @@ from pipeline.rag_engine import CollectorateRAGEngine
 from modules.document_summary.summarizer import DocumentSummarizer
 from modules.data_viz.query_engine import execute_data_query
 from modules.official_content.generator import OfficialContentGenerator
-from modules.mail.engine import fetch_recent_inbox_emails, _decode_mime_header
+
 
 
 
@@ -84,17 +84,6 @@ def test_module3_official_content_bilingual_clarity():
     assert "PRESS RELEASE NO" in res_en["generated_text"]
     assert "ERODE DISTRICT" in res_en["generated_text"]
 
-
-
-def test_module4_mail_engine_clarity():
-    """Verify Module 4 Mail Engine parses and extracts clear email details."""
-    inbox = fetch_recent_inbox_emails(limit=5)
-    assert inbox is not None
-    assert "emails" in inbox
-    assert len(inbox["emails"]) > 0
-    first_mail = inbox["emails"][0]
-    assert "subject" in first_mail
-    assert "sender" in first_mail
 
 
 

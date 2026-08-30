@@ -64,7 +64,6 @@ JSON வெளியீட்டு கட்டமைப்பு (Strict JSON 
         "data_viz": "தரவு மற்றும் காட்சிப்படுத்தல்: வரைபடங்கள் (Bar, Line, Pie), வட்ட வாரியான ஒப்பீடு, விதிவிலக்குகள் (Outliers) கண்டறிதல், போக்கு பகுப்பாய்வு.",
         "general_assistant": "பொது உதவியாளர்: ஆவண விளக்கம், அரசு விதிமுறைகள் தெளிவுபடுத்துதல், உடனடி அதிகாரப்பூர்வ சுருக்கம்.",
         "content_gen": "அலுவல் உள்ளடக்கம்: U.O. குறிப்பு தயாரிப்பு, சுற்றறிக்கை வரைவு, துறை கடிதங்கள் வரைவு செய்தல்.",
-        "bulk_workflow": "மொத்த பணிப்பாய்வு: மனு வகைப்பாடு, உடனடி ஒப்புகைச் சீட்டு தயாரிப்பு, முன்னுரிமை நிர்ணயம்.",
     }
 
     def __init__(
@@ -294,7 +293,7 @@ JSON வெளியீட்டு கட்டமைப்பு (Strict JSON 
                 "confidence": 0.91,
             })
 
-        else:  # general_assistant / bulk_workflow
+        else:  # general_assistant
             suggestions.append({
                 "text_tamil": f"{primary_dept} மற்றும் {primary_taluk} தொடர்பான கோப்பின் முக்கிய அம்சங்களை விளக்குக",
                 "text_english": f"Explain key aspects of document regarding {primary_dept} and {primary_taluk}",

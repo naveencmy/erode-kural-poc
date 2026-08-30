@@ -16,12 +16,8 @@ try:
         ("System Config", "GET", "/api/config"),
         ("System Stats", "GET", "/api/stats"),
         ("Audit Logs", "GET", "/api/audit"),
-        ("Bulk Items", "GET", "/api/bulk/items"),
         ("Content History", "GET", "/api/content/history"),
         ("Data Datasets", "GET", "/api/v2/data/datasets"),
-        ("Mail Config", "GET", "/api/v2/mail/config"),
-        ("Mail Received", "GET", "/api/v2/mail/received"),
-        ("Mail Sent Logs", "GET", "/api/v2/mail/sent-logs"),
         ("Suggestions", "GET", "/api/v1/suggestions?source_id=general"),
         ("OpenAPI Docs", "GET", "/openapi.json"),
     ]

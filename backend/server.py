@@ -21,38 +21,13 @@ from pipeline.database import init_db
 # ---------------------------------------------------------------------------
 # Lifespan — Startup / Shutdown hooks
 # ---------------------------------------------------------------------------
-_watcher = None
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    """Application lifespan: initialise DB and start background file watcher on startup."""
-    global _watcher
+    """Application lifespan: initialise DB on startup."""
     init_db()
-
-    # Start background file watcher for auto-processing scanned documents
-    try:
-        from pipeline.ingestion import FileSystemWatcher
-        from routers.bulk import get_pipeline
-
-        pipeline = get_pipeline()
-
-        def on_new_scan(source_id: str, dest_path: Path):
-            pipeline.process_source(source_id, file_path=dest_path)
-
-        _watcher = FileSystemWatcher(callback=on_new_scan)
-        _watcher.start()
-    except Exception as e:
-        print(f"Warning: Could not start background watcher: {e}")
-
     yield  # Application is running
-
-    # Shutdown
-    if _watcher:
-        try:
-            _watcher.stop()
-        except Exception:
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -77,16 +52,12 @@ app.add_middleware(
 # Mount Domain Routers
 # ---------------------------------------------------------------------------
 from routers.system import router as system_router
-from routers.bulk import router as bulk_router
-from routers.mail import router as mail_router
 from routers.audit import router as audit_router
 from routers.content import router as content_router
 from modules.data_viz.router import router as data_viz_router
 from modules.document_summary.router import router as document_summary_router
 
 app.include_router(system_router)
-app.include_router(bulk_router)
-app.include_router(mail_router)
 app.include_router(audit_router)
 app.include_router(content_router)
 app.include_router(data_viz_router)

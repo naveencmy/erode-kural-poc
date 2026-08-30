@@ -33,7 +33,7 @@ KEYRING_SERVICE = "ErodeCollectorate_IMAP"
 _IN_MEMORY_CREDS: Dict[str, str] = {}
 
 
-def get_stored_imap_password(username: str = config.IMAP_USERNAME) -> Optional[str]:
+def get_stored_imap_password(username: str = "") -> Optional[str]:
     """Retrieve IMAP password from Windows Credential Manager or fallback."""
     if keyring:
         try:
@@ -42,7 +42,7 @@ def get_stored_imap_password(username: str = config.IMAP_USERNAME) -> Optional[s
                 return val
         except Exception as e:
             logger.warning(f"Keyring read note: {e}")
-    return _IN_MEMORY_CREDS.get(username) or config.IMAP_PASSWORD
+    return _IN_MEMORY_CREDS.get(username) or getattr(config, 'IMAP_PASSWORD', '')
 
 
 def set_stored_imap_password(username: str, password: str) -> bool:
@@ -58,9 +58,9 @@ def set_stored_imap_password(username: str, password: str) -> bool:
 
 
 def test_imap_connection(
-    server: str = config.IMAP_SERVER,
-    port: int = config.IMAP_PORT,
-    username: str = config.IMAP_USERNAME,
+    server: str = "imap.gmail.com",
+    port: int = 993,
+    username: str = "",
     password: Optional[str] = None,
 ) -> Tuple[bool, str, List[str]]:
     """Test SSL connection to IMAP server and fetch top 5 subject lines."""
@@ -120,7 +120,7 @@ def process_raw_email(raw_email_bytes: bytes, filename: Optional[str] = None) ->
     """Store raw .eml bytes, create source record in SQLite, and return source_id and saved path."""
     source_id = compute_bytes_sha256(raw_email_bytes)
     fname = filename or f"{source_id}.eml"
-    dest_path = config.UPLOADS_EMAILS_DIR / fname
+    dest_path = (getattr(config, 'UPLOADS_EMAILS_DIR', config.UPLOADS_DIR / 'emails')) / fname
 
     with open(dest_path, "wb") as f:
         f.write(raw_email_bytes)
@@ -175,12 +175,12 @@ class IMAPPoller:
 
     def __init__(
         self,
-        server: str = config.IMAP_SERVER,
-        port: int = config.IMAP_PORT,
-        username: str = config.IMAP_USERNAME,
+        server: str = "imap.gmail.com",
+        port: int = 993,
+        username: str = "",
         password: Optional[str] = None,
-        mailbox: str = config.IMAP_MAILBOX,
-        batch_size: int = config.IMAP_BATCH_SIZE,
+        mailbox: str = "INBOX",
+        batch_size: int = 50,
     ):
         self.server = server
         self.port = port
@@ -192,7 +192,7 @@ class IMAPPoller:
     def poll_local_dev_mailbox(self) -> List[str]:
         """Poll local incoming_dev_mailbox folder for offline development testing."""
         ingested_ids: List[str] = []
-        dev_dir = config.UPLOADS_INCOMING_EMAILS_DIR
+        dev_dir = getattr(config, 'UPLOADS_INCOMING_EMAILS_DIR', config.UPLOADS_DIR / 'incoming_dev_mailbox')
         if not dev_dir.exists():
             return ingested_ids
 
@@ -300,7 +300,7 @@ class ScannedFileHandler(FileSystemEventHandler):
 
 
 class FileSystemWatcher:
-    """Watches scanned uploads and incoming dev mailbox directories using watchdog Observer."""
+    """Watches scanned uploads directory using watchdog Observer."""
 
     def __init__(self, callback: Optional[Callable[[str, Path], None]] = None):
         self.callback = callback
@@ -310,12 +310,10 @@ class FileSystemWatcher:
     def start(self) -> None:
         """Start watchdog observers on uploads directories."""
         config.UPLOADS_SCANNED_DIR.mkdir(parents=True, exist_ok=True)
-        config.UPLOADS_INCOMING_EMAILS_DIR.mkdir(parents=True, exist_ok=True)
 
         self.observer.schedule(self.handler, str(config.UPLOADS_SCANNED_DIR), recursive=False)
-        self.observer.schedule(self.handler, str(config.UPLOADS_INCOMING_EMAILS_DIR), recursive=False)
         self.observer.start()
-        logger.info(f"Started FileSystemWatcher on {config.UPLOADS_SCANNED_DIR} and {config.UPLOADS_INCOMING_EMAILS_DIR}")
+        logger.info(f"Started FileSystemWatcher on {config.UPLOADS_SCANNED_DIR}")
 
     def stop(self) -> None:
         """Stop watchdog observers."""

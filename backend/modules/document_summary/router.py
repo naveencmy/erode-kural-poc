@@ -48,7 +48,7 @@ class SummarizeRequest(BaseModel):
 
 class SuggestionsGenerateRequest(BaseModel):
     source_id: str
-    module_context: str = "document"  # document | data_viz | general_assistant | content_gen | bulk_workflow
+    module_context: str = "document"  # document | data_viz | general_assistant | content_gen
     officer_id: str = "OFFICER"
 
 

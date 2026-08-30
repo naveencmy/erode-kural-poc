@@ -240,7 +240,6 @@ with st.sidebar:
     st.markdown("#### ⚙️ கணினி விவரங்கள்")
     st.markdown(f"- **LLM**: `{getattr(config, 'OLLAMA_MODEL', 'qwen2.5:7b')}`")
     st.markdown("- **OCR**: `Indic-OCR (Transformer / PyMuPDF)`")
-    st.markdown(f"- **IMAP**: `{getattr(config, 'IMAP_SERVER', 'imap.nic.in')}:{getattr(config, 'IMAP_PORT', 993)}`")
     st.markdown(f"- **DB**: `{config.DATABASE_PATH.name}`")
     st.divider()
 
@@ -298,8 +297,8 @@ with tab1:
 
         if "Production" in imap_mode:
             st.info("NIC அரசு மின்னஞ்சல் சர்வர்: `imap.nic.in:993` (SSL)")
-            srv = st.text_input("IMAP Server:", value=config.IMAP_SERVER)
-            usr = st.text_input("Username / Email:", value=config.IMAP_USERNAME)
+            srv = st.text_input("IMAP Server:", value=getattr(config, 'IMAP_SERVER', 'imap.nic.in'))
+            usr = st.text_input("Username / Email:", value=getattr(config, 'IMAP_USERNAME', ''))
             pwd = st.text_input("Password (Stored in Windows Credential Manager):", type="password", value=get_stored_imap_password(usr) or "")
 
             col_btn_test, col_btn_save = st.columns([1, 1])
@@ -324,10 +323,11 @@ with tab1:
                         else:
                             st.error(msg)
         else:
-            st.info(f"உள்ளூர் மின்னஞ்சல் பெட்டி (`{config.UPLOADS_INCOMING_EMAILS_DIR.name}/`) கண்காணிக்கப்படுகிறது.")
+            _dev_dir = getattr(config, 'UPLOADS_INCOMING_EMAILS_DIR', config.UPLOADS_DIR / 'incoming_dev_mailbox')
+            st.info(f"உள்ளூர் மின்னஞ்சல் பெட்டி (`{_dev_dir.name}/`) கண்காணிக்கப்படுகிறது.")
             last_uid = get_imap_cursor()
             st.write(f"- **கடைசி UID Cursor:** `{last_uid}`")
-            st.write(f"- **உள்ளூர் மின்னஞ்சல் கோப்புறை:** `{config.UPLOADS_INCOMING_EMAILS_DIR}`")
+            st.write(f"- **உள்ளூர் மின்னஞ்சல் கோப்புறை:** `{_dev_dir}`")
 
         if st.button("🔄 இப்போது மின்னஞ்சல்களைச் சோதி (Poll Emails Now)"):
             with st.spinner("Polling mailbox..."):

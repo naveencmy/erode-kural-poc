@@ -8,21 +8,17 @@ import {
   FileText,
   BarChart3,
   Stamp,
-  Inbox,
   Settings,
   ClipboardList,
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Mail,
 } from 'lucide-react';
 
 const NAV_MODULES = [
   { id: 'general', icon: MessageSquare },
   { id: 'data', icon: BarChart3 },
   { id: 'content', icon: Stamp },
-  { id: 'bulk', icon: Inbox },
-  { id: 'mail', icon: Mail },
 ];
 
 const NAV_BOTTOM = [

@@ -3,8 +3,6 @@ import useAppStore from '../../stores/appStore';
 import GeneralModule from '../modules/GeneralModule';
 import DataModule from '../modules/DataModule';
 import ContentModule from '../modules/ContentModule';
-import BulkModule from '../modules/BulkModule';
-import MailModule from '../modules/MailModule';
 import AuditModule from '../modules/AuditModule';
 import SettingsModule from '../modules/SettingsModule';
 
@@ -18,10 +16,6 @@ export default function MainContent() {
       return <DataModule />;
     case 'content':
       return <ContentModule />;
-    case 'bulk':
-      return <BulkModule />;
-    case 'mail':
-      return <MailModule />;
     case 'audit':
       return <AuditModule />;
     case 'settings':

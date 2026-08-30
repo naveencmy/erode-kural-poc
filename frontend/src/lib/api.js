@@ -42,45 +42,6 @@ export const fetchConfig = () => apiCall('/config');
 // ─── Dashboard Stats ─────────────────────────────────
 export const fetchStats = () => apiCall('/stats');
 
-// ─── Bulk Workflow ───────────────────────────────────
-export const fetchBulkItems = (params = {}) => {
-  const query = new URLSearchParams();
-  if (params.status) query.set('status', params.status);
-  if (params.department) query.set('department', params.department);
-  if (params.priority) query.set('priority', params.priority);
-  if (params.limit) query.set('limit', String(params.limit));
-  if (params.offset) query.set('offset', String(params.offset));
-  const qs = query.toString();
-  return apiCall(`/bulk/items${qs ? `?${qs}` : ''}`);
-};
-
-export const fetchBulkItemDetail = (sourceId) => apiCall(`/bulk/${sourceId}`);
-
-export const approveItem = (sourceId, officerId, action = 'approve') =>
-  apiCall(`/bulk/${sourceId}/approve`, {
-    method: 'POST',
-    body: JSON.stringify({ officer_id: officerId, action }),
-  });
-
-export const editDraft = (sourceId, officerId, draftText) =>
-  apiCall(`/bulk/${sourceId}/edit-draft`, {
-    method: 'POST',
-    body: JSON.stringify({ officer_id: officerId, draft_text: draftText }),
-  });
-
-export const generateFileNumber = (sourceId, department, officerId) =>
-  apiCall(`/bulk/${sourceId}/generate-file-number`, {
-    method: 'POST',
-    body: JSON.stringify({ department, officer_id: officerId }),
-  });
-
-export const exportDocx = (sourceId) => apiCall(`/bulk/${sourceId}/export-docx`);
-
-export const ingestFile = (file) => {
-  const formData = new FormData();
-  formData.append('file', file);
-  return apiCall('/bulk/ingest', { method: 'POST', body: formData });
-};
 
 // ─── Audit ───────────────────────────────────────────
 export const fetchAuditLog = (limit = 100) => apiCall(`/audit?limit=${limit}`);
@@ -183,39 +144,6 @@ export const deleteDatasetApi = (datasetId, officerId = 'OFFICER') =>
     method: 'DELETE',
   });
 
-// ─── Mail & Official Communication ──────────────────
-export const testMailConnection = (credentials = {}) =>
-  apiCall('/v2/mail/test-connection', {
-    method: 'POST',
-    body: JSON.stringify(credentials),
-  });
-
-export const fetchReceivedEmails = (limit = 20) =>
-  apiCall(`/v2/mail/received?limit=${limit}`);
-
-export const ingestEmailToWorkflow = (uid, officerId = 'OFFICER') =>
-  apiCall('/v2/mail/ingest', {
-    method: 'POST',
-    body: JSON.stringify({ uid, officer_id: officerId }),
-  });
-
-export const sendOfficialEmail = (mailData) =>
-  apiCall('/v2/mail/send', {
-    method: 'POST',
-    body: JSON.stringify(mailData),
-  });
-
-export const fetchSentEmailLogs = (limit = 50) =>
-  apiCall(`/v2/mail/sent-logs?limit=${limit}`);
-
-export const fetchMailConfig = () =>
-  apiCall('/v2/mail/config');
-
-export const saveMailConfig = (configData) =>
-  apiCall('/v2/mail/config', {
-    method: 'POST',
-    body: JSON.stringify(configData),
-  });
 
 // ─── Module 3: Official Content ──────────────────────
 export const generateContent = (templateType, fields, officerId) =>

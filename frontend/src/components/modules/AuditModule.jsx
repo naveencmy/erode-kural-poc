@@ -12,20 +12,19 @@ import {
   Bot,
   BarChart2,
   FileText,
-  FileCheck,
 } from 'lucide-react';
 
 const MOCK_AUDIT_SEED = [
   { id: 'aud_101', timestamp: '2026-08-20T17:40:00', category: 'general', action: 'GENERAL_CHAT', officer_id: 'OFFICER_01', source_id: 'chat_882', details: 'Queried district welfare policy details in Tamil' },
   { id: 'aud_102', timestamp: '2026-08-20T16:15:22', category: 'data_viz', action: 'QUERY_DATASET', officer_id: 'OFFICER_02', source_id: 'ds_paddy_2026', details: 'Generated bar chart for Taluk-wise paddy procurement' },
-  { id: 'aud_103', timestamp: '2026-08-20T14:30:10', category: 'bulk', action: 'APPROVE_DRAFT', officer_id: 'DISTRICT_COLLECTOR', source_id: 'doc_991823', details: 'Approved revenue patta transfer draft acknowledgement' },
+  { id: 'aud_103', timestamp: '2026-08-20T14:30:10', category: 'content', action: 'DOC_SUMMARY', officer_id: 'DISTRICT_COLLECTOR', source_id: 'doc_991823', details: 'Generated executive summary of Revenue Department guidelines' },
   { id: 'aud_104', timestamp: '2026-08-20T11:05:44', category: 'content', action: 'GENERATE_CONTENT', officer_id: 'OFFICER_01', source_id: 'doc_press_44', details: 'Generated official press release for Jal Jeevan review' },
   { id: 'aud_105', timestamp: '2026-08-19T18:22:15', category: 'data_viz', action: 'DETECT_OUTLIERS', officer_id: 'OFFICER_03', source_id: 'ds_water_levels', details: 'Detected IQR statistical outliers in groundwater data' },
   { id: 'aud_106', timestamp: '2026-08-19T10:45:00', category: 'general', action: 'DOC_UPLOAD', officer_id: 'OFFICER_01', source_id: 'doc_erode_memo.pdf', details: 'Uploaded document for General Assistant summary' },
   { id: 'aud_107', timestamp: '2026-08-18T15:10:30', category: 'content', action: 'GENERATE_CIRCULAR', officer_id: 'OFFICER_02', source_id: 'doc_circ_12', details: 'Created inter-departmental circular for Independence Day prep' },
-  { id: 'aud_108', timestamp: '2026-08-18T09:30:00', category: 'bulk', action: 'INGEST_FILE', officer_id: 'SYSTEM', source_id: 'doc_email_993', details: 'Ingested scanned petition for Revenue Department' },
+  { id: 'aud_108', timestamp: '2026-08-18T09:30:00', category: 'general', action: 'INGEST_FILE', officer_id: 'SYSTEM', source_id: 'doc_scan_993', details: 'Ingested document for General Assistant analysis' },
   { id: 'aud_109', timestamp: '2026-07-15T12:00:00', category: 'data_viz', action: 'CREATE_CHART', officer_id: 'OFFICER_01', source_id: 'ds_health_2026', details: 'Created custom pie chart for hospital bed occupancy' },
-  { id: 'aud_110', timestamp: '2026-06-10T14:20:00', category: 'bulk', action: 'GENERATE_FILE_NO', officer_id: 'OFFICER_02', source_id: 'doc_88214', details: 'Generated official file number ERD/REV/2026/1042' },
+  { id: 'aud_110', timestamp: '2026-06-10T14:20:00', category: 'content', action: 'EXPORT_DOCX', officer_id: 'OFFICER_02', source_id: 'doc_88214', details: 'Exported official document template in DOCX format' },
   { id: 'aud_111', timestamp: '2025-12-05T10:15:00', category: 'general', action: 'GENERAL_CHAT', officer_id: 'OFFICER_03', source_id: 'chat_102', details: 'Searched Tamil Nadu G.O. guidelines for social welfare' },
   { id: 'aud_112', timestamp: '2025-11-20T16:50:00', category: 'content', action: 'MEMO_CREATE', officer_id: 'DISTRICT_COLLECTOR', source_id: 'doc_memo_05', details: 'Issued office memorandum regarding weekly grievance hearings' },
 ];
@@ -75,7 +74,7 @@ export default function AuditModule() {
     if (cat === 'content' || act.includes('CONTENT') || act.includes('LETTER') || act.includes('MEMO') || act.includes('CIRCULAR') || det.includes('PRESS') || det.includes('CIRCULAR') || det.includes('OFFICIAL CONTENT')) {
       return { id: 'content', label: t('audit.cat_content'), icon: FileText, color: '#7e22ce', bg: 'rgba(168, 85, 247, 0.12)', border: 'rgba(168, 85, 247, 0.3)' };
     }
-    return { id: 'bulk', label: t('audit.cat_bulk'), icon: FileCheck, color: '#047857', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)' };
+    return { id: 'general', label: t('audit.cat_general'), icon: Bot, color: '#b45309', bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.3)' };
   };
 
   // Synchronize date input change with Y-M dropdowns
@@ -187,7 +186,6 @@ export default function AuditModule() {
               { id: 'general', label: t('audit.cat_general'), icon: Bot },
               { id: 'data_viz', label: t('audit.cat_data_viz'), icon: BarChart2 },
               { id: 'content', label: t('audit.cat_content'), icon: FileText },
-              { id: 'bulk', label: t('audit.cat_bulk'), icon: FileCheck },
             ].map((cat) => {
               const IconComp = cat.icon;
               const active = selectedCategory === cat.id;

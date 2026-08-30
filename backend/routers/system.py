@@ -19,7 +19,6 @@ async def get_app_config():
         "priority_levels": config.PRIORITY_LEVELS,
         "dev_mode": config.DEV_MODE,
         "ollama_model": config.OLLAMA_MODEL,
-        "imap_server": config.IMAP_SERVER,
         "database": str(config.DATABASE_PATH.name),
         "ocr_engine": "Indic-OCR (Transformer)",
         "version": "1.0.0",

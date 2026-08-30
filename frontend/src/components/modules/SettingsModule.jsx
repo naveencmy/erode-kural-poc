@@ -65,13 +65,9 @@ export default function SettingsModule() {
               <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.95rem' }}>{t('settings.ocr_engine')}</span>
               <strong style={{ fontSize: '1rem' }}>{appConfig?.ocr_engine || 'Indic-OCR (Transformer)'}</strong>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-surface-border)', paddingBottom: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.95rem' }}>{t('settings.database')}</span>
               <strong style={{ fontSize: '1rem' }}>{appConfig?.database || 'collectorate_workflow.db'}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.95rem' }}>{t('settings.imap_server')}</span>
-              <strong style={{ fontSize: '1rem' }}>{appConfig?.imap_server || 'imap.nic.in'}</strong>
             </div>
           </div>
         </div>

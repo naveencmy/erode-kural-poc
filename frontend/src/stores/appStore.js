@@ -31,9 +31,6 @@ const useAppStore = create((set, get) => ({
   openInspector: (data) => set({ inspectorOpen: true, inspectorData: data }),
   closeInspector: () => set({ inspectorOpen: false, inspectorData: null }),
 
-  // ─── Bulk detail selected item ────────
-  selectedSourceId: null,
-  setSelectedSourceId: (id) => set({ selectedSourceId: id }),
 
   // ─── App config (from API) ────────────
   appConfig: null,
