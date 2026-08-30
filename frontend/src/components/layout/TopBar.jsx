@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import useAppStore from '../../stores/appStore';
-import { Sun, Moon, Bell, Globe, User } from 'lucide-react';
+import { Sun, Moon, Bell, Globe, User, LogOut } from 'lucide-react';
 
-export default function TopBar() {
+export default function TopBar({ onLogout }) {
   const { t, i18n } = useTranslation();
   const { theme, toggleTheme, officerId, setOfficerId } = useAppStore();
   const [showOfficerInput, setShowOfficerInput] = useState(false);
@@ -82,6 +82,18 @@ export default function TopBar() {
           </span>
         )}
       </div>
+
+      {/* Logout Button */}
+      {onLogout && (
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={onLogout}
+          title={t('sidebar.logout') || 'Logout'}
+          style={{ gap: 4, color: '#b91c1c' }}
+        >
+          <LogOut size={16} />
+        </button>
+      )}
     </header>
   );
 }
