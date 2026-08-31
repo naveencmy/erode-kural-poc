@@ -25,6 +25,7 @@ from pipeline.database import (
     record_source,
     record_suggestion_click,
     save_content_fingerprint,
+    save_ocr_results,
 )
 
 logger = logging.getLogger("DocumentSummaryRouter")
@@ -80,17 +81,28 @@ async def api_upload_and_analyze_document(
         with open(dest_path, "wb") as f:
             f.write(content_bytes)
 
-        # Record in sources table
+        # Record in sources table with absolute path
         record_source(
             source_id=source_id,
             source_type="scan" if any(dest_path.suffix.lower().endswith(x) for x in ["png", "jpg", "jpeg", "pdf"]) else "email",
-            raw_path=str(dest_path),
+            raw_path=str(dest_path.resolve()),
             status="pending",
             assigned_officer=officer_id,
         )
 
         # 1. Structure extraction
         extracted = extractor.extract(dest_path)
+
+        # Persist extracted text in ocr_results table for instant context retrieval
+        ext_text = (extracted.get("text") or "").strip()
+        save_ocr_results(
+            source_id=source_id,
+            page_number=1,
+            full_text=ext_text,
+            blocks_json=json.dumps(extracted.get("blocks", [])),
+            avg_confidence=0.95,
+            ocr_engine="extractor",
+        )
 
         # 2. Content fingerprinting (AI-driven)
         fingerprint = fingerprinter.fingerprint(extracted)

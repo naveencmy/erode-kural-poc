@@ -1,11 +1,11 @@
 import React, { useState, useRef } from 'react';
 import useAppStore from '../../stores/appStore';
-import { generateContent, exportContentDocx, attachContentFile } from '../../lib/api';
+import { generateContent, exportContentDocx } from '../../lib/api';
 import html2pdf from 'html2pdf.js';
 import {
-  Stamp, Sparkles, FileCheck, Download, FileText, ChevronRight,
+  Stamp, FileCheck, Download, FileText, ChevronRight,
   Newspaper, Bell, FileText as FileTextIcon, ClipboardList, RefreshCw,
-  Copy, CheckCheck, Pencil, Save, X, ChevronDown, ChevronUp, SlidersHorizontal, Plus, Paperclip,
+  Copy, CheckCheck, ChevronDown, ChevronUp, Plus,
 } from 'lucide-react';
 
 
@@ -53,30 +53,12 @@ const TEMPLATES = [
   },
 ];
 
-// ─── Source badge ─────────────────────────────────────────────────────────────
-function SourceBadge({ source }) {
-  const isAI = source === 'ollama';
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-      padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700,
-      background: isAI ? 'rgba(59,130,246,0.15)' : 'rgba(107,114,128,0.15)',
-      color: isAI ? '#60a5fa' : '#9ca3af',
-      border: `1px solid ${isAI ? 'rgba(59,130,246,0.3)' : 'rgba(107,114,128,0.3)'}`,
-    }}>
-      <Sparkles size={10} />
-      {isAI ? 'AI Enhanced' : 'Template'}
-    </span>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ContentModule() {
   const { officerId } = useAppStore();
   const [selectedTemplate, setSelectedTemplate] = useState(TEMPLATES[0].id);
   const activeTmpl = TEMPLATES.find(t => t.id === selectedTemplate) || TEMPLATES[0];
 
-  const [language, setLanguage] = useState('auto'); // 'auto', 'ta', 'en'
   const [subject, setSubject] = useState('');
   const [details, setDetails] = useState('');
   const [loading, setLoading] = useState(false);
@@ -86,51 +68,18 @@ export default function ContentModule() {
   const [exporting, setExporting] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
 
-  // Edit mode state
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedText, setEditedText] = useState('');
-
-  const [attachedFile, setAttachedFile] = useState(null);
-  const [uploadingFile, setUploadingFile] = useState(false);
-  const fileInputRef = useRef(null);
-
   const resultRef = useRef(null);
   const [isFormOpen, setIsFormOpen] = useState(true);
   const formRef = useRef(null);
-
-  async function handleFileSelect(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingFile(true);
-    setError(null);
-    try {
-      const res = await attachContentFile(file, officerId);
-      setAttachedFile(res);
-      if (!subject.trim() && res.suggested_subject) {
-        setSubject(res.suggested_subject);
-      }
-      if (res.suggested_details) {
-        setDetails(prev => prev.trim() ? `${prev}\n\n${res.suggested_details}` : res.suggested_details);
-      }
-    } catch (err) {
-      console.error('File attachment failed:', err);
-      setError('கோப்பு தகவல்கள் பெறுவதில் பிழை ஏற்பட்டது: ' + (err.message || ''));
-    } finally {
-      setUploadingFile(false);
-      if (e.target) e.target.value = '';
-    }
-  }
 
   async function handleGenerate(e) {
     e.preventDefault();
     if (!subject.trim()) return;
     setLoading(true);
     setError(null);
-    setIsEditing(false);
     try {
-      const res = await generateContent(selectedTemplate, { subject, details, language }, officerId);
+      const res = await generateContent(selectedTemplate, { subject, details, language: 'auto' }, officerId);
       setResult(res);
-      setEditedText(res.generated_text);
       setIsFormOpen(false);
     } catch (err) {
       setError(err.message || 'உள்ளடக்கம் உருவாக்குவதில் பிழை ஏற்பட்டது.');
@@ -139,12 +88,10 @@ export default function ContentModule() {
     }
   }
 
-
-
   async function handleExport() {
     setExporting(true);
     try {
-      await exportContentDocx(result.content_id, result.ref_number, result.template_type, editedText);
+      await exportContentDocx(result.content_id, result.ref_number, result.template_type, result.generated_text);
     } catch (err) {
       alert('DOCX export failed: ' + err.message);
     } finally {
@@ -157,11 +104,8 @@ export default function ContentModule() {
     try {
       const filename = `${result.ref_number.replace(/\//g, '_')}_${result.template_type}.pdf`;
 
-      // Parse editedText into structured body paragraphs safely
-      const rawParas = editedText.split('\n\n').map(p => p.trim()).filter(Boolean);
+      const rawParas = result.generated_text.split('\n\n').map(p => p.trim()).filter(Boolean);
       const cleanBodyParas = [];
-      let detectedFooter = null;
-      const defaultFooter = 'வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்.';
 
       for (const p of rawParas) {
         const lines = p.split('\n').map(l => l.trim()).filter(Boolean);
@@ -176,12 +120,12 @@ export default function ContentModule() {
             lineNoNum.startsWith('குறிப்பாணை எண்') ||
             lineNoNum.startsWith('எண்:') ||
             lineNoNum.startsWith('நாள்') ||
-            lineNoNum === '----' || lineNoNum === '---' || lineNoNum.startsWith('----------------') || lineNoNum.startsWith('========') ||
+            lineNoNum === '----' || lineNoNum === '---' ||
+            lineNoNum.startsWith('----------------') ||
             lineNoNum === 'அவர்களின் செய்திக்குறிப்பு-' ||
             lineNoNum === 'அவர்களின் சுற்றறிக்கை-' ||
             lineNoNum === 'அவர்களின் அலுவலகக் குறிப்பாணை-' ||
-            lineNoNum === 'ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,' ||
-            lineNoNum === 'ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,\nஅவர்களின் செய்திக்குறிப்பு-'
+            lineNoNum === 'ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,'
           )) {
             continue;
           }
@@ -191,7 +135,6 @@ export default function ContentModule() {
             lineNoNum.includes('செய்தி மக்கள் தொடர்பு அலுவலர்') ||
             lineNoNum.startsWith('இப்படிக்கு')
           )) {
-            detectedFooter = lineNoNum;
             continue;
           }
 
@@ -203,27 +146,6 @@ export default function ContentModule() {
       }
 
       const isEnglishDoc = result.language === 'en';
-      let finalPdfFooter = isEnglishDoc ? 'Issued by: District Public Relations Officer, Erode District.' : defaultFooter;
-      if (detectedFooter) {
-        const normDet = detectedFooter.replace(/[\s\-_,.:;]/g, '');
-        const normDef = defaultFooter.replace(/[\s\-_,.:;]/g, '');
-        if (normDet !== normDef) {
-          finalPdfFooter = detectedFooter;
-        }
-      }
-
-      let refLabel = isEnglishDoc ? `PRESS RELEASE NO: ${result.ref_number}` : `செ.வெ.எண் - ${result.ref_number}`;
-      let titleType = isEnglishDoc ? 'PRESS RELEASE ISSUED BY THE DISTRICT COLLECTOR\nTHIRU S. KANDASAMY, I.A.S., ERODE DISTRICT' : 'அவர்களின் செய்திக்குறிப்பு-';
-
-      if (result.template_type === 'circular') {
-        refLabel = isEnglishDoc ? `CIRCULAR NO: ${result.ref_number}` : `சுற்றறிக்கை எண் - ${result.ref_number}`;
-        titleType = isEnglishDoc ? 'OFFICE OF THE DISTRICT COLLECTOR, ERODE DISTRICT\nOFFICIAL CIRCULAR' : 'அவர்களின் சுற்றறிக்கை-';
-      } else if (result.template_type === 'memo') {
-        refLabel = isEnglishDoc ? `MEMORANDUM NO: ${result.ref_number}` : `குறிப்பாணை எண் - ${result.ref_number}`;
-        titleType = isEnglishDoc ? 'OFFICE OF THE DISTRICT COLLECTOR, ERODE DISTRICT\nOFFICE MEMORANDUM' : 'அவர்களின் அலுவலகக் குறிப்பாணை-';
-      }
-
-      // Build styled HTML matching authentic original Erode District document with crisp page breaks
       const container = document.createElement('div');
       container.style.width = '700px';
       container.style.padding = '20px 25px';
@@ -232,40 +154,57 @@ export default function ContentModule() {
       container.style.fontFamily = "'Nirmala UI', 'Noto Sans Tamil', 'Latha', Arial, sans-serif";
       container.style.boxSizing = 'border-box';
 
-      if (result.template_type === 'meeting_minutes') {
-        const cleanMinutesParas = rawParas.filter(p => {
-          const isShort = p.length < 110;
-          if (isShort && (
-            (p.includes('கூட்ட நடவடிக்கைகள்') && p.includes('தலைமையில்')) ||
-            p.includes('PROCEEDINGS OF THE DISTRICT COLLECTOR') ||
-            p.includes('முன்னிலை:') || p.includes('PRESENT:') ||
-            p.startsWith('எண்:') || p.startsWith('Roc. No:') ||
-            p.startsWith('பொருள்:') || p.startsWith('Sub:') ||
-            p.startsWith('பார்வை:') || p.startsWith('Ref:') ||
-            p === '<><><>' ||
-            p.includes('ஓம்/-ச.கந்தசாமி') || p.includes('Sd/- S. Kandasamy') ||
-            p.includes('நேர்முக உதவியாளர்') || p.includes('Personal Assistant') ||
-            p.startsWith('----------------')
-          )) {
-            return false;
-          }
-          return true;
-        });
+      let refPrefixLabel = isEnglishDoc ? `PRESS RELEASE NO: ${result.ref_number}` : `செ.வெ.எண் - ${result.ref_number}`;
+      let headerTitle = isEnglishDoc
+        ? 'PRESS RELEASE ISSUED BY THE DISTRICT COLLECTOR & DISTRICT MAGISTRATE<br/>THIRU S. KANDASAMY, I.A.S., ERODE DISTRICT'
+        : 'ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,<br/>அவர்களின் செய்திக்குறிப்பு-';
+      let footerLabel = isEnglishDoc
+        ? 'Issued by: District Public Relations Officer, Erode District.'
+        : 'வெளியீடு செய்தி மக்கள் தொடர்பு அலுவலர், ஈரோடு மாவட்டம்.';
 
+      if (result.template_type === 'circular') {
+        refPrefixLabel = isEnglishDoc ? `CIRCULAR NO: ${result.ref_number}` : `சுற்றறிக்கை எண் - ${result.ref_number}`;
+        headerTitle = isEnglishDoc
+          ? 'OFFICE OF THE DISTRICT COLLECTOR, ERODE DISTRICT<br/>OFFICIAL CIRCULAR'
+          : 'ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,<br/>அவர்களின் சுற்றறிக்கை-';
+        footerLabel = isEnglishDoc
+          ? 'By Order of the District Collector, Erode District.'
+          : 'மாவட்ட ஆட்சித்தலைவர் அவர்களின் உத்தரவுப்படி, ஈரோடு மாவட்டம்.';
+      } else if (result.template_type === 'memo') {
+        refPrefixLabel = isEnglishDoc ? `MEMORANDUM NO: ${result.ref_number}` : `குறிப்பாணை எண் - ${result.ref_number}`;
+        headerTitle = isEnglishDoc
+          ? 'OFFICE OF THE DISTRICT COLLECTOR, ERODE DISTRICT<br/>OFFICE MEMORANDUM'
+          : 'ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,<br/>அவர்களின் அலுவலகக் குறிப்பாணை-';
+        footerLabel = isEnglishDoc
+          ? 'Personal Assistant to the District Collector, Erode District.'
+          : 'மாவட்ட ஆட்சித்தலைவர் அவர்களின் உத்தரவுப்படி, ஈரோடு மாவட்டம்.';
+      }
+
+      // Expand numbered items into separate paragraphs for clean spacing and no page-break gaps
+      const expandedBodyParas = [];
+      for (const para of cleanBodyParas) {
+        const lines = para.split('\n').map(l => l.trim()).filter(Boolean);
+        let currentGroup = [];
+        for (const line of lines) {
+          const isNumbered = /^\d+[\.\)]\s*/.test(line) || /^[•\-\*]\s*/.test(line);
+          if (isNumbered && currentGroup.length > 0) {
+            expandedBodyParas.push(currentGroup.join('\n'));
+            currentGroup = [line];
+          } else {
+            currentGroup.push(line);
+          }
+        }
+        if (currentGroup.length > 0) {
+          expandedBodyParas.push(currentGroup.join('\n'));
+        }
+      }
+
+      if (result.template_type === 'meeting_minutes') {
         const headerBlock = isEnglishDoc ? `
           <div style="text-align: center; font-weight: bold; font-size: 12pt; color: #000000; line-height: 1.45; margin-bottom: 12px;">
             PROCEEDINGS OF THE DISTRICT COLLECTOR & DISTRICT MAGISTRATE, ERODE<br/>
             MINUTES OF REVIEW MEETING: ${result.subject.toUpperCase()}<br/>
             <span style="font-size: 11pt;">PRESENT: THIRU S. KANDASAMY, I.A.S., DISTRICT COLLECTOR</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 10.5pt; color: #000000; margin-bottom: 10px; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 6px 0;">
-            <span>Roc. No: ${result.ref_number}/2026</span>
-            <span>Dated: ${result.date_display}</span>
-          </div>
-          <div style="font-size: 10.5pt; color: #000000; margin-bottom: 14px; line-height: 1.5;">
-            <div style="font-weight: bold;">Sub: ${result.subject} – Minutes of Review Meeting – Approval and Orders – Issued.</div>
-            <div style="color: #222; margin-top: 4px;">Ref: G.O. Ms. No. 78, Agriculture & Farmers Welfare Department, dated 17.02.2016.</div>
-            <div style="text-align: center; font-weight: bold; letter-spacing: 2px; margin-top: 6px;">&lt;&gt;&lt;&gt;&lt;&gt;</div>
           </div>
         ` : `
           <div style="text-align: center; font-weight: bold; font-size: 12pt; color: #000000; line-height: 1.45; margin-bottom: 12px;">
@@ -273,112 +212,97 @@ export default function ContentModule() {
             நடைபெற்ற ${result.subject} கூட்ட நடவடிக்கைகள்<br/>
             <span style="font-size: 11pt;">முன்னிலை: திரு.ச.கந்தசாமி, இ.ஆ.ப.,</span>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 10.5pt; color: #000000; margin-bottom: 10px; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 6px 0;">
-            <span>எண்: வே/${result.ref_number}/2026</span>
-            <span>நாள்: ${result.date_display}</span>
-          </div>
-          <div style="font-size: 10.5pt; color: #000000; margin-bottom: 14px; line-height: 1.5;">
-            <div style="font-weight: bold;">பொருள்: ${result.subject} – கூட்ட நடவடிக்கைகள் – ஒப்புதல் அளித்தல் – தொடர்பாக.</div>
-            <div style="color: #222; margin-top: 4px;">பார்வை: அரசாணை எண்: 78 வேளாண்மை (வே.உ.6) துறை, நாள்: 17.02.2016.</div>
-            <div style="text-align: center; font-weight: bold; letter-spacing: 2px; margin-top: 6px;">&lt;&gt;&lt;&gt;&lt;&gt;</div>
-          </div>
         `;
 
-        const footerBlock = isEnglishDoc ? `
-          <div style="display: flex; justify-content: flex-end; text-align: right; font-weight: bold; font-size: 10.5pt; color: #000000; margin-bottom: 15px;">
-            <div>
-              Sd/- S. Kandasamy<br/>
-              District Collector,<br/>
-              Erode District.
-            </div>
-          </div>
-          <div style="text-align: center; font-size: 10pt; color: #333333; line-height: 1.5;">
-            <div>/ By Order /</div>
-            <div style="margin-top: 10px; font-weight: bold;">Personal Assistant to District Collector, District Collectorate, Erode.</div>
+        const subHeaderBlock = isEnglishDoc ? `
+          <div style="margin-bottom: 14px; font-size: 10.5pt; color: #000000; line-height: 1.6;">
+            <div><strong>Roc. No:</strong> ${result.ref_number}/2026 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <strong>Dated:</strong> ${result.date_display}</div>
+            <div style="margin-top: 6px;"><strong>Sub:</strong> ${result.subject} – Minutes of Review Meeting – Approval and Orders – Issued.</div>
+            <div style="color: #222; margin-top: 4px;">Ref: G.O. Ms. No. 78, Agriculture & Farmers Welfare Department, dated 17.02.2016.</div>
+            <div style="text-align: center; font-weight: bold; letter-spacing: 2px; margin-top: 6px;">&lt;&gt;&lt;&gt;&lt;&gt;</div>
           </div>
         ` : `
-          <div style="display: flex; justify-content: flex-end; text-align: right; font-weight: bold; font-size: 10.5pt; color: #000000; margin-bottom: 15px;">
-            <div>
-              ஓம்/-ச.கந்தசாமி<br/>
-              மாவட்ட ஆட்சித்தலைவர்,<br/>
-              ஈரோடு.
-            </div>
-          </div>
-          <div style="text-align: center; font-size: 10pt; color: #333333; line-height: 1.5;">
-            <div>/உத்தரவுப்படி/</div>
-            <div style="margin-top: 10px; font-weight: bold;">நேர்முக உதவியாளர், மாவட்ட ஆட்சியர் அலுவலகம், ஈரோடு.</div>
+          <div style="margin-bottom: 14px; font-size: 10.5pt; color: #000000; line-height: 1.6;">
+            <div><strong>எண்:</strong> வே/${result.ref_number}/2026 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <strong>நாள்:</strong> ${result.date_display}</div>
+            <div style="margin-top: 6px;"><strong>பொருள்:</strong> ${result.subject} – கூட்ட நடவடிக்கைகள் – ஒப்புதல் அளித்தல் – தொடர்பாக.</div>
+            <div style="color: #222; margin-top: 4px;">பார்வை: அரசாணை எண்: 78 வேளாண்மை (வே.உ.6) துறை, நாள்: 17.02.2016.</div>
+            <div style="text-align: center; font-weight: bold; letter-spacing: 2px; margin-top: 6px;">&lt;&gt;&lt;&gt;&lt;&gt;</div>
           </div>
         `;
 
         container.innerHTML = `
           <div style="page-break-inside: avoid; break-inside: avoid;">
             ${headerBlock}
+            <div style="border-top: 1.5px solid #000000; border-bottom: 1.5px solid #000000; padding: 6px 0; margin-bottom: 14px;">
+              ${subHeaderBlock}
+            </div>
           </div>
 
           <div style="color: #000000; font-size: 10.5pt; line-height: 1.75;">
-            ${cleanMinutesParas.map(p => `
-              <div style="page-break-inside: avoid; break-inside: avoid; margin-bottom: 14px; text-align: justify; text-justify: inter-word; color: #000000; font-size: 10.5pt; line-height: 1.75;">
-                ${p.replace(/\n/g, '<br/>')}
-              </div>
-            `).join('')}
+            ${expandedBodyParas.map(p => {
+              const isNumbered = /^\d+[\.\)]/.test(p.trim());
+              return `
+                <div style="margin-bottom: ${isNumbered ? '8px' : '12px'}; text-align: justify; color: #000000;">
+                  ${p.replace(/\n/g, '<br/>')}
+                </div>
+              `;
+            }).join('')}
           </div>
 
           <div style="page-break-inside: avoid; break-inside: avoid; margin-top: 25px;">
-            ${footerBlock}
+            <div style="display: flex; justify-content: flex-end; text-align: right; font-weight: bold; font-size: 10.5pt; color: #000000; margin-bottom: 15px;">
+              <div>
+                ${isEnglishDoc ? 'Sd/- S. Kandasamy<br/>District Collector,<br/>Erode District.' : 'ஓம்/-ச.கந்தசாமி<br/>மாவட்ட ஆட்சித்தலைவர்,<br/>ஈரோடு.'}
+              </div>
+            </div>
+            <div style="text-align: center; font-size: 10pt; color: #333333; line-height: 1.5;">
+              <div>${isEnglishDoc ? '/ By Order /' : '/உத்தரவுப்படி/'}</div>
+              <div style="margin-top: 10px; font-weight: bold;">
+                ${isEnglishDoc ? 'Personal Assistant to District Collector, District Collectorate, Erode.' : 'நேர்முக உதவியாளர், மாவட்ட ஆட்சியர் அலுவலகம், ஈரோடு.'}
+              </div>
+            </div>
           </div>
         `;
       } else {
-        const topSubHeader = isEnglishDoc ? `
-          <div style="font-weight: bold; font-size: 13pt; color: #000000; line-height: 1.45;">
-            ${titleType.replace(/\n/g, '<br/>')}
-          </div>
-        ` : `
-          <div style="font-weight: bold; font-size: 13pt; color: #000000; line-height: 1.45;">
-            ஈரோடு மாவட்ட ஆட்சித்தலைவர் திரு.ச.கந்தசாமி இ.ஆ.ப.,<br/>
-            ${titleType}
-          </div>
-        `;
-
         container.innerHTML = `
           <div style="page-break-inside: avoid; break-inside: avoid;">
-            <div style="display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 11pt; color: #000000; margin-bottom: 20px;">
-              <span>${refLabel}</span>
-              <span>${isEnglishDoc ? 'DATE' : 'நாள்'} - ${result.date_display}</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 11pt; color: #000000; margin-bottom: 18px;">
+              <span>${refPrefixLabel}</span>
+              <span>${isEnglishDoc ? `DATE: ${result.date_display}` : `நாள் - ${result.date_display}`}</span>
             </div>
 
-            <div style="text-align: center; margin-bottom: 22px;">
-              ${topSubHeader}
+            <div style="text-align: center; margin-bottom: 20px;">
+              <div style="font-weight: bold; font-size: 12.5pt; color: #000000; line-height: 1.5;">
+                ${headerTitle}
+              </div>
               <div style="font-weight: bold; color: #000000; letter-spacing: 2px; margin-top: 6px;">----</div>
             </div>
           </div>
 
-          <div style="color: #000000; font-size: 11pt; line-height: 1.8;">
-            ${cleanBodyParas.map(p => `
-              <div style="page-break-inside: avoid; break-inside: avoid; margin-bottom: 14px; text-align: justify; text-justify: inter-word; color: #000000; font-size: 11pt; line-height: 1.8;">
-                ${p.replace(/\n/g, '<br/>')}
-              </div>
-            `).join('')}
+          <div style="color: #000000; font-size: 11pt; line-height: 1.75;">
+            ${expandedBodyParas.map(p => {
+              const isNumbered = /^\d+[\.\)]/.test(p.trim());
+              return `
+                <div style="margin-bottom: ${isNumbered ? '8px' : '12px'}; text-align: justify; color: #000000; font-size: 11pt; line-height: 1.75;">
+                  ${p.replace(/\n/g, '<br/>')}
+                </div>
+              `;
+            }).join('')}
           </div>
 
           <div style="page-break-inside: avoid; break-inside: avoid; margin-top: 25px; border-top: 1.5px solid #000000; padding-top: 10px;">
-            <div style="font-weight: bold; font-size: 10.5pt; color: #000000;">${finalPdfFooter}</div>
+            <div style="font-weight: bold; font-size: 10.5pt; color: #000000;">
+              ${footerLabel}
+            </div>
           </div>
         `;
       }
-
 
       const opt = {
         margin: [12, 12, 12, 12],
         filename: filename,
         image: { type: 'jpeg', quality: 1.0 },
-        html2canvas: { 
-          scale: 2.5, 
-          useCORS: true, 
-          letterRendering: true, 
-          backgroundColor: '#ffffff',
-          scrollY: 0,
-          windowWidth: 700
-        },
+        html2canvas: { scale: 2.5, useCORS: true, letterRendering: true, backgroundColor: '#ffffff' },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
       };
@@ -393,23 +317,9 @@ export default function ContentModule() {
   }
 
   function handleCopy() {
-    navigator.clipboard.writeText(editedText);
+    navigator.clipboard.writeText(result.generated_text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }
-
-  function handleStartEdit() {
-    setIsEditing(true);
-  }
-
-  function handleSaveEdit() {
-    setResult(prev => ({ ...prev, generated_text: editedText }));
-    setIsEditing(false);
-  }
-
-  function handleCancelEdit() {
-    setEditedText(result.generated_text);
-    setIsEditing(false);
   }
 
   function handleReset() {
@@ -417,30 +327,18 @@ export default function ContentModule() {
     setError(null);
     setSubject('');
     setDetails('');
-    setIsEditing(false);
-    setEditedText('');
     setIsFormOpen(true);
-  }
-
-  function scrollToForm() {
-    setIsFormOpen(true);
-    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 16 }}>
-
-      {/* ── Header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Stamp size={20} style={{ color: 'var(--color-tn-accent)' }} />
-          <span className="tamil-text" style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--color-text-primary)' }}>
-            அதிகாரப்பூர்வ உள்ளடக்க ஜெனரேட்டர்
-          </span>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Stamp size={20} style={{ color: 'var(--color-tn-accent)' }} />
+        <span className="tamil-text" style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--color-text-primary)' }}>
+          அதிகாரப்பூர்வ உள்ளடக்க ஜெனரேட்டர்
+        </span>
       </div>
 
-      {/* ── Template Selector ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8 }}>
         {TEMPLATES.map((tmpl) => {
           const Icon = tmpl.icon;
@@ -448,32 +346,37 @@ export default function ContentModule() {
           return (
             <button
               key={tmpl.id}
-              onClick={() => { setSelectedTemplate(tmpl.id); setIsFormOpen(true); }}
+              onClick={() => {
+                setSelectedTemplate(tmpl.id);
+                setResult(null);
+                setError(null);
+                setIsFormOpen(true);
+              }}
               style={{
-                cursor: 'pointer', textAlign: 'left', padding: '8px 12px',
-                borderRadius: 10, border: `2px solid ${isActive ? tmpl.color : 'var(--color-surface-border)'}`,
-                background: isActive ? `${tmpl.color}18` : 'var(--color-surface-card)',
-                transition: 'all 0.2s', outline: 'none',
+                display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4,
+                padding: '10px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+                border: isActive ? `2px solid ${tmpl.color}` : '1px solid var(--color-surface-border)',
+                background: isActive ? `${tmpl.color}15` : 'var(--color-surface-card)',
+                boxShadow: isActive ? `0 0 12px ${tmpl.color}25` : 'none',
+                transition: 'all 0.2s ease',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Icon size={14} style={{ color: tmpl.color }} />
-                <div>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                    {tmpl.titleEn}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: tmpl.color, fontWeight: 600 }} className="tamil-text">
-                    {tmpl.titleTa}
-                  </div>
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                <Icon size={18} style={{ color: tmpl.color }} />
+                {isActive && <ChevronRight size={14} style={{ color: tmpl.color }} />}
+              </div>
+              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--color-text-primary)' }} className="tamil-text">
+                {tmpl.titleTa}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>
+                {tmpl.titleEn}
               </div>
             </button>
           );
         })}
       </div>
 
-      {/* ── Input Form (Always available to view & tweak) ── */}
-      <div ref={formRef} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 16px', transition: 'all 0.3s' }}>
+      <div ref={formRef} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div
           onClick={() => result && setIsFormOpen(!isFormOpen)}
           style={{
@@ -486,14 +389,14 @@ export default function ContentModule() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {React.createElement(activeTmpl.icon, { size: 16, style: { color: activeTmpl.color } })}
             <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--color-text-primary)' }} className="tamil-text">
-              {activeTmpl.titleTa} ({activeTmpl.titleEn}) — உள்ளீடுகள் & குறிப்புகள்
+              {activeTmpl.titleTa} ({activeTmpl.titleEn}) — உள்ளீடுகள்
             </span>
             {result && (
               <span style={{
                 padding: '2px 8px', borderRadius: 12, fontSize: '0.68rem', fontWeight: 600,
                 background: 'rgba(59,130,246,0.12)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.25)',
               }}>
-                {isFormOpen ? 'Click to minimize' : 'Click to view & edit inputs'}
+                {isFormOpen ? 'Click to minimize' : 'Click to view inputs'}
               </span>
             )}
           </div>
@@ -506,146 +409,41 @@ export default function ContentModule() {
 
         {isFormOpen && (
           <form onSubmit={handleGenerate} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {/* Language Selector & File Attachment Bar */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, paddingBottom: 4 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
-                  வெளியீட்டு மொழி / Output Language:
-                </span>
-                {[
-                  { id: 'auto', label: 'Auto (தானியங்கி)' },
-                  { id: 'ta', label: 'தமிழ் (Tamil)' },
-                  { id: 'en', label: 'English' },
-                ].map(opt => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setLanguage(opt.id)}
-                    style={{
-                      padding: '3px 10px',
-                      borderRadius: 6,
-                      fontSize: '0.78rem',
-                      fontWeight: language === opt.id ? 700 : 500,
-                      border: language === opt.id ? `1.5px solid ${activeTmpl.color}` : '1px solid var(--color-surface-border)',
-                      background: language === opt.id ? `${activeTmpl.color}20` : 'transparent',
-                      color: language === opt.id ? activeTmpl.color : 'var(--color-text-secondary)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Attach Any File Button */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="*/*"
-                  style={{ display: 'none' }}
-                  onChange={handleFileSelect}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingFile}
-                  style={{
-                    padding: '4px 12px',
-                    borderRadius: 8,
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    border: '1px dashed var(--color-tn-accent)',
-                    background: 'rgba(200,169,81,0.08)',
-                    color: 'var(--color-text-primary)',
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                  title="Attach any document, spreadsheet, scan, or data file"
-                >
-                  <Paperclip size={14} style={{ color: 'var(--color-tn-accent)' }} />
-                  <span>{uploadingFile ? 'பகுப்பாய்வு செய்கிறது...' : '📎 ஆவணம் / கோப்பு இணைக்கவும் (Attach File)'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Attached File Chip if present */}
-            {attachedFile && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '6px 12px',
-                  borderRadius: 8,
-                  background: 'var(--color-surface-bg)',
-                  border: '1px solid var(--color-surface-border)',
-                  fontSize: '0.85rem',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
-                  <FileText size={15} style={{ color: 'var(--color-tn-accent)', flexShrink: 0 }} />
-                  <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {attachedFile.file_name}
-                  </span>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', flexShrink: 0 }}>
-                    ({attachedFile.file_type.toUpperCase()} · {(attachedFile.file_size / 1024).toFixed(1)} KB)
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAttachedFile(null)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 2 }}
-                  title="Remove attached file"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            )}
-
-
             <div>
               <label className="tamil-text" style={{ fontSize: '0.95rem', fontWeight: 600, display: 'block', marginBottom: 4, color: 'var(--color-text-primary)' }}>
                 பொருள் (Subject) <span style={{ color: activeTmpl.color }}>*</span>
               </label>
               <textarea
                 rows={2}
-                placeholder={language === 'en' ? 'e.g. Jal Jeevan Mission — Water Connection Scheme for 1,200 households in Erode District' : activeTmpl.placeholder}
-
+                placeholder={activeTmpl.placeholder}
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 required
                 className="tamil-text"
                 style={{
-                  width: '100%', padding: '10px 14px', borderRadius: 8,
-                  border: `1px solid ${subject ? activeTmpl.color + '80' : 'var(--color-surface-border)'}`,
+                  width: '100%', padding: '10px 12px', borderRadius: 8,
+                  border: '1px solid var(--color-surface-border)',
                   background: 'var(--color-surface-input)', color: 'var(--color-text-primary)',
-                  outline: 'none', fontSize: '1rem', transition: 'border-color 0.2s',
-                  lineHeight: '1.5', resize: 'vertical', minHeight: '52px',
-                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                  fontSize: '0.92rem', resize: 'vertical',
                 }}
               />
             </div>
 
             <div>
               <label className="tamil-text" style={{ fontSize: '0.95rem', fontWeight: 600, display: 'block', marginBottom: 4, color: 'var(--color-text-primary)' }}>
-                முக்கிய குறிப்புகள் / Key Points & Context
+                கூடுதல் விவரங்கள் & குறிப்புகள் (Detailed Notes / Key Points)
               </label>
               <textarea
-                rows={5}
+                rows={3}
                 placeholder={activeTmpl.detailPlaceholder}
                 value={details}
                 onChange={(e) => setDetails(e.target.value)}
                 className="tamil-text"
                 style={{
-                  width: '100%', padding: '10px 14px', borderRadius: 8,
+                  width: '100%', padding: '10px 12px', borderRadius: 8,
                   border: '1px solid var(--color-surface-border)',
                   background: 'var(--color-surface-input)', color: 'var(--color-text-primary)',
-                  outline: 'none', resize: 'vertical', fontSize: '1rem',
-                  fontFamily: 'inherit', lineHeight: 1.6,
+                  fontSize: '0.9rem', resize: 'vertical',
                 }}
               />
             </div>
@@ -669,28 +467,17 @@ export default function ContentModule() {
                 background: loading || !subject.trim()
                   ? 'var(--color-surface-border)'
                   : `linear-gradient(135deg, ${activeTmpl.color}, ${activeTmpl.color}bb)`,
-                color: '#fff', fontWeight: 700, fontSize: '1rem',
-                cursor: loading || !subject.trim() ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s',
+                color: '#fff', fontWeight: 700, fontSize: '1rem', cursor: 'pointer',
               }}
             >
-              {loading ? (
-                <><RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} /> உருவாக்குகிறது...</>
-              ) : result ? (
-                <><RefreshCw size={15} /> மீண்டும் உருவாக்கு (Regenerate)</>
-              ) : (
-                'ஆவணம் உருவாக்கு'
-              )}
+              {loading ? <><RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} /> உருவாக்குகிறது...</> : 'ஆவணம் உருவாக்கு'}
             </button>
           </form>
         )}
       </div>
 
-      {/* ── Result ── */}
       {result && (
-        <div ref={resultRef} style={{ display: 'flex', flexDirection: 'column', gap: 8, animation: 'fadeIn 0.4s ease' }}>
-
-          {/* Result action bar */}
+        <div ref={resultRef} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div className="card" style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
             background: `linear-gradient(135deg, ${activeTmpl.color}15, var(--color-surface-card))`,
@@ -706,44 +493,11 @@ export default function ContentModule() {
                   <span style={{ fontWeight: 600, color: activeTmpl.color }}>{result.ref_number}</span>
                   <span>·</span>
                   <span>{result.date_display}</span>
-                  <span>·</span>
-                  <span style={{
-                    padding: '1px 8px', borderRadius: 10, fontSize: '0.68rem', fontWeight: 700,
-                    background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)',
-                  }}>
-                    {result.language === 'en' ? 'English' : 'தமிழ்'}
-                  </span>
-                  {isEditing && (
-                    <span style={{
-                      padding: '1px 8px', borderRadius: 10, fontSize: '0.68rem', fontWeight: 700,
-                      background: 'rgba(251,191,36,0.2)', color: '#fbbf24',
-                      border: '1px solid rgba(251,191,36,0.4)',
-                    }}>
-                      ✎ Editing
-                    </span>
-                  )}
                 </div>
-
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {/* Edit / Save / Cancel */}
-              {!isEditing ? (
-                <button onClick={handleStartEdit} style={btnStyle('#fbbf24')} title="Edit the generated draft directly">
-                  <Pencil size={13} /> Edit
-                </button>
-              ) : (
-                <>
-                  <button onClick={handleSaveEdit} style={btnStyle('#10b981')}>
-                    <Save size={13} /> Save
-                  </button>
-                  <button onClick={handleCancelEdit} style={btnStyle('#ef4444')}>
-                    <X size={13} /> Cancel
-                  </button>
-                </>
-              )}
-
               {/* Copy */}
               <button onClick={handleCopy} style={btnStyle()} title="Copy text to clipboard">
                 {copied ? <><CheckCheck size={13} /> Copied!</> : <><Copy size={13} /> Copy</>}
@@ -752,8 +506,8 @@ export default function ContentModule() {
               {/* PDF */}
               <button
                 onClick={handleExportPdf}
-                disabled={exportingPdf || isEditing}
-                style={{ ...btnStyle(), opacity: isEditing ? 0.5 : 1 }}
+                disabled={exportingPdf}
+                style={btnStyle()}
                 title="Download as PDF file (.pdf)"
               >
                 {exportingPdf ? (
@@ -764,13 +518,17 @@ export default function ContentModule() {
               </button>
 
               {/* DOCX */}
-              <button onClick={handleExport} disabled={exporting || isEditing} style={{
-                ...btnStyle(activeTmpl.color, true),
-                opacity: isEditing ? 0.5 : 1,
-              }} title="Download as Microsoft Word document (.docx)">
-                {exporting
-                  ? <><RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> Exporting...</>
-                  : <><Download size={13} /> DOCX</>}
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                style={btnStyle(activeTmpl.color, true)}
+                title="Download as Microsoft Word document (.docx)"
+              >
+                {exporting ? (
+                  <><RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> Exporting...</>
+                ) : (
+                  <><Download size={13} /> DOCX</>
+                )}
               </button>
 
               {/* New document */}
@@ -780,7 +538,7 @@ export default function ContentModule() {
             </div>
           </div>
 
-          {/* Generated text — view OR edit */}
+          {/* Generated text preview */}
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{
               padding: '10px 16px', borderBottom: '1px solid var(--color-surface-border)',
@@ -790,50 +548,21 @@ export default function ContentModule() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <FileText size={14} style={{ color: 'var(--color-text-secondary)' }} />
                 <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
-                  {isEditing ? '✎ Edit Document Draft' : 'Document Preview'}
+                  Document Preview
                 </span>
               </div>
             </div>
 
-            {isEditing ? (
-              <textarea
-                value={editedText}
-                onChange={(e) => setEditedText(e.target.value)}
-                className="tamil-text"
-                style={{
-                  width: '100%', minHeight: 480,
-                  padding: '16px 20px', margin: 0, border: 'none',
-                  fontFamily: "'Nirmala UI', 'Noto Sans Tamil', monospace",
-                  fontSize: '1rem', lineHeight: 1.8, resize: 'vertical',
-                  background: 'var(--color-surface-input)', color: 'var(--color-text-primary)',
-                  outline: 'none',
-                }}
-              />
-            ) : (
-              <pre className="tamil-text" style={{
-                padding: '16px 20px', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                fontFamily: "'Nirmala UI', 'Noto Sans Tamil', monospace",
-                fontSize: '1rem', lineHeight: 1.8,
-                color: 'var(--color-text-primary)',
-                maxHeight: 480, overflowY: 'auto',
-              }}>
-                {editedText}
-              </pre>
-            )}
-          </div>
-
-          {/* Save reminder when editing */}
-          {isEditing && (
-            <div style={{
-              padding: '10px 16px', borderRadius: 8, fontSize: '0.8rem',
-              background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)',
-              color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 8,
+            <pre className="tamil-text" style={{
+              padding: '16px 20px', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              fontFamily: "'Nirmala UI', 'Noto Sans Tamil', monospace",
+              fontSize: '1rem', lineHeight: 1.8,
+              color: 'var(--color-text-primary)',
+              maxHeight: 480, overflowY: 'auto',
             }}>
-              <Pencil size={13} />
-              நீங்கள் ஆவணத்தை திருத்துகிறீர்கள். மாற்றங்களை சேமிக்க <strong>Save</strong> அழுத்தவும்.
-              DOCX download only works after saving edits.
-            </div>
-          )}
+              {result.generated_text}
+            </pre>
+          </div>
         </div>
       )}
 

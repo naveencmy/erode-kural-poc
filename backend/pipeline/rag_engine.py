@@ -228,21 +228,65 @@ class CollectorateRAGEngine:
             full_text = (row["full_text"] or "") if row else ""
             department = (row["department"] or "மாவட்ட நிர்வாகம்") if row else "மாவட்ட நிர்வாகம்"
 
-            # If full_text not in ocr_results, extract directly from raw_path file
-            if not full_text and raw_path_str and Path(raw_path_str).exists():
-                try:
-                    from modules.document_summary.extractor import ContentExtractor
-                    ext = ContentExtractor()
-                    ext_res = ext.extract(Path(raw_path_str))
-                    full_text = ext_res.get("text", "") or ""
-                except Exception as ex:
-                    logger.warning(f"Failed to extract from raw_path: {ex}")
+            # If full_text not in ocr_results, resolve file path and extract directly
+            if not full_text and raw_path_str:
+                resolved_file = None
+                p = Path(raw_path_str)
+                if p.exists():
+                    resolved_file = p
+                elif (config.UPLOADS_DOCUMENTS_DIR / p.name).exists():
+                    resolved_file = config.UPLOADS_DOCUMENTS_DIR / p.name
+                elif (config.BASE_DIR / raw_path_str).exists():
+                    resolved_file = config.BASE_DIR / raw_path_str
 
-            from pipeline.database import get_content_fingerprint
-            fp = get_content_fingerprint(source_id) or {}
+                if resolved_file:
+                    try:
+                        from modules.document_summary.extractor import ContentExtractor
+                        ext = ContentExtractor()
+                        ext_res = ext.extract(resolved_file)
+                        full_text = ext_res.get("text", "") or ""
+                    except Exception as ex:
+                        logger.warning(f"Failed to extract from resolved path {resolved_file}: {ex}")
 
             filename = Path(raw_path_str).name if raw_path_str else source_id
             clean_filename = re.sub(r"^doc_[a-f0-9]+_", "", filename)
+
+            # If full_text is still empty, match against official_content table records by ref_number/filename/template_type
+            if not full_text:
+                try:
+                    cur.execute("""
+                        SELECT generated_text, subject, details, ref_number, content_id, template_type FROM official_content
+                        ORDER BY created_at DESC LIMIT 30
+                    """)
+                    all_offs = cur.fetchall()
+                    clean_name_lower = clean_filename.lower()
+                    for off in all_offs:
+                        ref_raw = (off["ref_number"] or "").lower()
+                        cid_raw = (off["content_id"] or "").lower()
+                        subj_raw = (off["subject"] or "").lower()
+                        ttype = (off["template_type"] or "").lower()
+
+                        ref_clean = ref_raw.replace("/", "_").replace("-", "_").replace(" ", "_")
+                        cid_clean = cid_raw.replace("/", "_").replace("-", "_").replace(" ", "_")
+                        digits = re.findall(r'\d+', ref_raw) + re.findall(r'\d+', cid_raw)
+
+                        is_match = (
+                            (ref_clean and ref_clean in clean_name_lower) or
+                            (cid_clean and cid_clean in clean_name_lower) or
+                            any(d in clean_name_lower for d in digits if len(d) >= 1) or
+                            ("mom" in clean_name_lower and ttype == "meeting_minutes") or
+                            ("memo" in clean_name_lower and ttype == "memo") or
+                            ("cir" in clean_name_lower and ttype == "circular") or
+                            ("pr" in clean_name_lower and ttype == "press_release")
+                        )
+                        if is_match:
+                            full_text = off["generated_text"] or f"{off['subject']}\n\n{off['details']}"
+                            break
+                except Exception as ex:
+                    logger.warning(f"Error checking official_content table: {ex}")
+
+            from pipeline.database import get_content_fingerprint
+            fp = get_content_fingerprint(source_id) or {}
 
             return {
                 "source_id": source_id,
@@ -360,6 +404,11 @@ class CollectorateRAGEngine:
         schemes = fp.get("detected_schemes", [])
         entities = fp.get("key_entities", [])
 
+        # Clean query prefix like [Attachment: file.pdf] or [இணைப்பு: file.pdf]
+        clean_query = re.sub(r'\[(?:இணைப்பு|Attachment|File):\s*[^\]]+\]', '', query).strip()
+        if not clean_query:
+            clean_query = "ஆவணப் பகுப்பாய்வு சுருக்கம்"
+
         def _parse_num_val(val: Any) -> Optional[float]:
             if pd.isnull(val):
                 return None
@@ -421,46 +470,70 @@ class CollectorateRAGEngine:
             if s and len(s) > 2 and not s.startswith('---'):
                 cleaned_lines.append(s)
 
-        q_lower = query.lower()
+        q_lower = clean_query.lower()
         is_dates = any(k in q_lower for k in ["தேதி", "date", "காலக்கெடு", "deadline", "காலம்", "வருடம்", "ஆண்டு", "year"])
         is_action = any(k in q_lower for k in ["நடவடிக்கை", "action", "தேவை", "பரிந்துரை", "செய்ய வேண்டும்", "steps", "வழிமுறை"])
         is_keypoints = any(k in q_lower for k in ["முக்கிய குறிப்புகள்", "குறிப்புகள்", "key points", "points", "சிறப்பம்ச", "takeaways", "main points"])
-        is_brief = any(k in q_lower for k in ["brief", "explain", "விளக்கு", "விளக்கம்", "சுருக்க", "சுருக்கம்", "எளிதாக", "புரிந்து", "details", "பற்றியது"])
+        is_brief = any(k in q_lower for k in ["brief", "explain", "விளக்கு", "விளக்கம்", "சுருக்க", "சுருக்கம்", "எளிதாக", "புரிந்து", "details", "பற்றியது", "about", "what is this document"])
         is_highest = any(k in q_lower for k in ["அதிக", "highest", "max", "top", "உயர்", "அதிகபட்ச", "பெரித"])
         is_lowest = any(k in q_lower for k in ["குறைந்த", "lowest", "min", "bottom", "குறைந்தபட்ச", "கம்மி"])
+
+        TALUK_MAP = {
+            "kodumudi": "கொடுமுடி",
+            "erode": "ஈரோடு",
+            "perundurai": "பெருந்துறை",
+            "sathyamangalam": "சத்தியமங்கலம்",
+            "sathy": "சத்தியமங்கலம்",
+            "bhavani": "பவானி",
+            "gobichettipalayam": "கோபிசெட்டிபாளையம்",
+            "gobi": "கோபிசெட்டிபாளையம்",
+            "anthiyur": "அந்தியூர்",
+            "modakkurichi": "மொடக்குறிச்சி",
+            "nambiyur": "நம்பியூர்",
+            "thalavadi": "தாளவாடி",
+        }
 
         # Check for specific mentioned taluk in query
         mentioned_taluk = None
         for t in config.ERODE_TALUKS:
-            if t in query or t.lower() in q_lower:
+            if t in clean_query or t.lower() in q_lower:
                 mentioned_taluk = t
                 break
+        if not mentioned_taluk:
+            for en_t, ta_t in TALUK_MAP.items():
+                if en_t in q_lower:
+                    mentioned_taluk = ta_t
+                    break
 
         parts = []
 
-        # -----------------------------------------------------------------
-        # 1. SPECIFIC TALUK QUERY (e.g. "ஈரோடு வட்டத்தின் விபரம் என்ன?")
-        # -----------------------------------------------------------------
+        # 1. SPECIFIC TALUK QUERY (e.g. "kodumudi budget" or "ஈரோடு வட்டத்தின் விபரம் என்ன?")
         if mentioned_taluk and df is not None and not df.empty:
             cols = list(df.columns)
             cat_col = cols[0]
-            taluk_rows = df[df[cat_col].astype(str).str.contains(mentioned_taluk, na=False)]
+            taluk_rows = df[df[cat_col].astype(str).str.contains(mentioned_taluk, case=False, na=False)]
+            if taluk_rows.empty:
+                for en_k, ta_v in TALUK_MAP.items():
+                    if ta_v == mentioned_taluk:
+                        taluk_rows = df[df[cat_col].astype(str).str.contains(en_k, case=False, na=False)]
+                        if not taluk_rows.empty:
+                            break
+
             if not taluk_rows.empty:
                 row = taluk_rows.iloc[0]
-                parts.append(f"### 📍 {mentioned_taluk} வட்டத்தின் விபரங்கள் ({fname})\n")
+                taluk_name_disp = row[cat_col]
+                parts.append(f"### 📍 {taluk_name_disp} வட்டத்தின் விபரங்கள் ({fname})\n")
                 for c in cols:
                     val = row[c]
                     parsed_n = _parse_num_val(val)
-                    if parsed_n is not None and ('பட்ஜெட்' in c or 'தொகை' in c or 'budget' in c.lower()):
+                    if parsed_n is not None and ('பட்ஜெட்' in c or 'தொகை' in c or 'budget' in c.lower() or 'spent' in c.lower() or 'allocation' in c.lower()):
                         val_str = _fmt_num_val(parsed_n, val)
                     else:
                         val_str = str(val)
                     parts.append(f"• **{c.replace('_', ' ')}:** {val_str}")
                 return "\n".join(parts)
 
-        # -----------------------------------------------------------------
         # 2. DATES & DEADLINES QUERY
-        # -----------------------------------------------------------------
         if is_dates:
             parts.append(f"### 📅 முக்கிய தேதிகள் மற்றும் காலக்கெடு விபரம் ({fname})\n")
             if df is not None and not df.empty:
@@ -486,9 +559,7 @@ class CollectorateRAGEngine:
                     parts.append("இந்த ஆவணத்தில் குறிப்பிட்ட காலக்கெடு அல்லது தேதிகள் நேரடியாகக் குறிப்பிடப்படவில்லை. துறைசார் வழக்கமான நடைமுறைகளின்படி உரிய காலத்திற்குள் நடவடிக்கை மேற்கொள்ளப்பட வேண்டும்.")
                 return "\n".join(parts)
 
-        # -----------------------------------------------------------------
         # 3. HIGHEST / LOWEST SPECIFIC QUERIES
-        # -----------------------------------------------------------------
         if (is_highest or is_lowest) and df is not None and not df.empty:
             cols = list(df.columns)
             cat_col = cols[0]
@@ -528,9 +599,33 @@ class CollectorateRAGEngine:
                                 parts.append(f"• **செலவிடப்பட்ட தொகை:** {_fmt_num_val(spent_num, min_row[spent_col])}")
                     return "\n".join(parts)
 
-        # -----------------------------------------------------------------
-        # 4. BRIEF EXPLANATION QUERY (e.g. "explain it brief")
-        # -----------------------------------------------------------------
+        is_count_request = any(k in q_lower for k in ["10", "ten", "lines", "points", "வரி", "பாயிண்ட்", "10 வரிகளில்", "10 points", "10 lines"])
+
+        # 4. EXPLICIT 10 LINES / POINTS REQUEST
+        if is_count_request:
+            parts.append(f"### 📋 ஆவணத்தின் 10 முக்கிய விபரங்கள் ({fname})\n")
+            if df is not None and not df.empty:
+                cols = list(df.columns)
+                cat_col = cols[0]
+                main_val_col = cols[1] if len(cols) > 1 else cat_col
+                parts.append(f"ஈரோடு மாவட்டத்தின் **{len(df)}** வட்டங்களுக்கான **{main_val_col.replace('_', ' ')}** முழுமையான 10 விபரங்கள்:\n")
+                for idx, (_, row) in enumerate(df.head(10).iterrows(), 1):
+                    val_str = str(row[main_val_col])
+                    parsed_v = _parse_num_val(row[main_val_col])
+                    if parsed_v is not None:
+                        val_str = _fmt_num_val(parsed_v, row[main_val_col])
+                    extra_info = f" (செலவு: {_fmt_num_val(_parse_num_val(row[cols[2]]), row[cols[2]])})" if len(cols) > 2 and _parse_num_val(row[cols[2]]) is not None else ""
+                    parts.append(f"{idx}. **{row[cat_col]}:** {val_str}{extra_info}")
+                return "\n".join(parts)
+            else:
+                if cleaned_lines:
+                    for idx, line in enumerate(cleaned_lines[:10], 1):
+                        parts.append(f"{idx}. {line}")
+                else:
+                    parts.append(f"1. ஈரோடு மாவட்ட நிர்வாகம் தொடர்பான அதிகாரப்பூர்வ ஆவணம் ({fname}).")
+                return "\n".join(parts)
+
+        # 5. BRIEF EXPLANATION / SUMMARY QUERY
         if is_brief and not is_keypoints:
             parts.append(f"### 📋 ஆவணத்தின் எளிய விளக்கம் (Brief Overview)\n")
             if df is not None and not df.empty:
@@ -558,18 +653,18 @@ class CollectorateRAGEngine:
                 parts.append(f"4. **முக்கிய நோக்கம்:** மாவட்ட வளர்ச்சி பணிகளை வட்ட வாரியாக கண்காணித்து நிதி பயன்பாட்டை உறுதி செய்வதே இதன் நோக்கமாகும்.")
                 return "\n".join(parts)
             else:
-                snippet = " ".join(cleaned_lines[:4])
-                if len(snippet) > 300:
-                    snippet = snippet[:300] + "..."
-                parts.append(f"{snippet}\n")
-                parts.append(f"• வகைப்பாடு: **{content_type}**")
+                parts.append(f"**பொருள் மற்றும் சுருக்கம் ({fname}):**\n")
+                if cleaned_lines:
+                    for line in cleaned_lines[:10]:
+                        parts.append(f"• {line}")
+                else:
+                    parts.append(f"• ஈரோடு மாவட்ட நிர்வாகம் தொடர்பான ஆவணம் ({fname}).")
+                parts.append(f"\n• வகைப்பாடு: **{content_type}**")
                 if schemes:
                     parts.append(f"• திட்டங்கள்: {', '.join(schemes)}")
                 return "\n".join(parts)
 
-        # -----------------------------------------------------------------
         # 5. KEY POINTS / TAKEAWAYS
-        # -----------------------------------------------------------------
         if is_keypoints:
             parts.append(f"### ஆவணத்தின் முக்கிய குறிப்புகள் ({fname})\n")
             if df is not None and not df.empty:
@@ -595,9 +690,7 @@ class CollectorateRAGEngine:
                         parts.append(f"• திட்டங்கள்: {', '.join(schemes)}")
                 return "\n".join(parts)
 
-        # -----------------------------------------------------------------
         # 6. ACTION STEPS
-        # -----------------------------------------------------------------
         if is_action:
             parts.append(f"### தேவைப்படும் தொடர் நடவடிக்கைகள் ({fname})\n")
             parts.append("1. **சரிபார்த்தல்:** ஆவணத்தில் உள்ள விவரங்களை தொடர்புடைய வட்டாட்சியர் அல்லது துறை அலுவலக கோப்புகளுடன் ஒப்பிட்டு சரிபார்த்தல்.")
@@ -605,15 +698,32 @@ class CollectorateRAGEngine:
             parts.append("3. **பதில் அல்லது ஆணை வெளியீடு:** உரிய வழிகாட்டுதலின்படி பதில் கடிதம், சுற்றறிக்கை அல்லது ஆணை ஆவணம் உருவாக்குதல்.")
             return "\n".join(parts)
 
-        # -----------------------------------------------------------------
-        # 7. DEFAULT TABULAR OVERVIEW (Full Table + Simple Takeaways)
-        # -----------------------------------------------------------------
+        # 7. CUSTOM USER QUESTION MATCHING ACROSS DOCUMENT TEXT
+        query_tokens = [t.lower() for t in re.split(r'[\s,!?\.\:\-\_]+', clean_query) if len(t) > 2 and t.lower() not in ["what", "is", "the", "in", "this", "document", "about", "for", "are", "and", "how", "who", "which", "என்ன", "எது", "எவ்வாறு", "எத்தனை"]]
+        if query_tokens and cleaned_lines:
+            matching_lines = []
+            for line in cleaned_lines:
+                line_lower = line.lower()
+                matches = sum(1 for tok in query_tokens if tok in line_lower)
+                if matches > 0:
+                    matching_lines.append((matches, line))
+            if matching_lines:
+                matching_lines.sort(key=lambda x: x[0], reverse=True)
+                parts.append(f"### 📄 வினவலுக்கான விபரம் ({fname})\n")
+                parts.append(f"**வினவல்:** {clean_query}\n")
+                parts.append("**ஆவணத்திலிருந்து கண்டறியப்பட்ட தகவல்கள்:**")
+                seen = set()
+                for _, line in matching_lines[:6]:
+                    if line not in seen:
+                        seen.add(line)
+                        parts.append(f"• {line}")
+                return "\n".join(parts)
+
+        # 8. DEFAULT TABULAR OVERVIEW
         if df is not None and not df.empty:
             return self._format_tabular_document_summary(df, fname)
 
-        # -----------------------------------------------------------------
-        # 8. DEFAULT DOCUMENT OVERVIEW
-        # -----------------------------------------------------------------
+        # 9. DEFAULT DOCUMENT OVERVIEW
         parts.append(f"### ஆவணப் பகுப்பாய்வு சுருக்கம் ({fname})\n")
         if cleaned_lines:
             snippet = " ".join(cleaned_lines[:5])
@@ -629,12 +739,6 @@ class CollectorateRAGEngine:
             parts.append(f"• தொடர்புடைய திட்டங்கள்: {', '.join(schemes)}")
         if entities:
             parts.append(f"• குறிப்பிடப்பட்டுள்ள முக்கிய பிரிவுகள்: {', '.join(entities[:5])}")
-        parts.append("")
-
-        parts.append("### பரிந்துரைக்கப்படும் தொடர் நடவடிக்கைகள்:")
-        parts.append("1. தொடர்புடைய துறை கோப்புகளுடன் ஆவண விவரங்களை ஒப்பிட்டு சரிபார்த்தல்.")
-        parts.append("2. மாவட்ட ஆட்சியரின் ஒப்புதலுக்காக குறிப்பு தாள் (Note Sheet) தயாரித்தல்.")
-        parts.append("3. தேவையான பதில் அல்லது சுற்றறிக்கை ஆவணத்தை வரைவு செய்தல்.")
 
         return "\n".join(parts)
 
@@ -675,18 +779,8 @@ class CollectorateRAGEngine:
             )
             sources_list.append(f"இணைக்கப்பட்ட ஆவணம்: {fname}")
 
-        # Check if query is an analytical/factual question on the attached document
-        q_lower = message.lower()
-        is_doc_analytical_query = attached_doc and (
-            any(k in q_lower for k in [
-                "அதிக", "highest", "max", "top", "உயர்", "குறைந்த", "lowest", "min", "bottom", "பட்ஜெட்", "budget",
-                "விபரம்", "details", "தேதி", "date", "காலக்கெடு", "நடவடிக்கை", "action", "குறிப்புகள்", "points",
-                "விளக்க", "brief", "எந்த", "வட்டம்", "taluk", "எத்தனை", "பதிவு", "அட்டவணை", "table", "பற்றியது", "சுருக்கம்"
-            ]) or
-            any(t.lower() in q_lower for t in config.ERODE_TALUKS)
-        )
-
-        if is_doc_analytical_query:
+        # Whenever a document is attached, process all user queries using document QA engine
+        if attached_doc:
             answer = self._generate_analytical_document_answer(attached_doc, message, officer_id)
             res_payload = {
                 "answer": answer,
